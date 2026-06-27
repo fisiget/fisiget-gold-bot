@@ -114,19 +114,19 @@ def dual_ai_filter(preis, dxy, rsi, mathe_signal):
             if response.text and "SIGNAL:" in response.text:
                 return parse_ai_response(response.text, "Gemini 2.5")
         except Exception:
-            pass # Bei jedem Fehler sofort weiter zu Groq
+            pass # Bei Fehlern direkt weiter zu Groq
             
-    # --- VERSUCH 2: GROQ / LLAMA 3 (Automatisches Backup) ---
+    # --- VERSUCH 2: GROQ / LLAMA 3.1 (Aktualisiertes Modell) ---
     if keys["groq"] and groq_client:
         try:
             response = groq_client.chat.completions.create(
-                model="llama3-8b-8192", 
+                model="llama-3.1-8b-instant", 
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=60
             )
             res_text = response.choices[0].message.content
             if res_text and "SIGNAL:" in res_text:
-                return parse_ai_response(res_text, "Groq / Llama3")
+                return parse_ai_response(res_text, "Groq / Llama3.1")
         except Exception:
             pass
 
