@@ -187,10 +187,13 @@ st.markdown("""
 app_layout_platzhalter = st.empty()
 
 # ==========================================
-# 2. KI-SETUP (GOOGLE GEMINI KONFIGURATION)
+# 2. KI-SETUP (SICHERE STREAMLIT SECRETS)
 # ==========================================
-# Ersetze den Text unten mit deinem echten API-Key von ai.google.dev, sobald du ihn hast
-API_KEY = "DEIN_GEMINI_API_KEY"
+# Holt sich den Key vollautomatisch und unsichtbar aus dem Streamlit-Tresor
+if "GEMINI_API_KEY" in st.secrets:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+else:
+    API_KEY = "DEIN_GEMINI_API_KEY"
 
 if API_KEY != "DEIN_GEMINI_API_KEY" and API_KEY.strip() != "":
     genai.configure(api_key=API_KEY)
@@ -238,7 +241,7 @@ def ai_filter(preis, mathe_signal, history):
     BEGRÜNDUNG: [Deine präzise Begründung in genau einem kurzen Satz für ein Handy-Display]
     """
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         text = response.text
         
@@ -272,7 +275,7 @@ start_preis = get_real_gold_price() or 2350.0
 src_history = [start_preis] * 15
 xATRTrailingStop = start_preis - 5.0
 
-# Counter für den KI-Takt (um die API nicht zu überlasten)
+# Counter für den KI-Takt
 ki_takt = 0
 aktuelles_ki_signal = "BUY (LONG)"
 aktuelle_ki_begruendung = "Warte auf den ersten Datenstrom..."
