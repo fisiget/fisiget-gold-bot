@@ -39,17 +39,15 @@ st.markdown(f"""
 app_layout_platzhalter = st.empty()
 
 # ==========================================
-# 3. DUAL-KI SETUP (RICHTIGES AUSLESEN)
+# 3. DUAL-KI SETUP (STREAMLIT CLOUD SECRETS)
 # ==========================================
 keys = {"gemini": None, "groq": None}
 groq_client = None
 
-# Streamlit sucht hier nach den VARIABLEN-NAMEN aus deiner secrets.toml
 if hasattr(st, "secrets"):
     keys["gemini"] = st.secrets.get("GEMINI_API_KEY")
     keys["groq"] = st.secrets.get("GROQ_API_KEY")
 
-# KIs aktivieren, falls die Schlüssel gefunden wurden
 if keys["gemini"]:
     genai.configure(api_key=keys["gemini"])
 if keys["groq"]:
@@ -96,9 +94,8 @@ def calculate_rsi(history, period=14):
 # 5. DIE INTELLIGENTE DUAL-AI PIPELINE
 # ==========================================
 def dual_ai_filter(preis, dxy, rsi, mathe_signal):
-    # Wenn überhaupt kein Key da ist
     if not keys["gemini"] and not keys["groq"]:
-        return mathe_signal, "Keine API-Schlüssel in secrets.toml gefunden (Mathe-Modus)."
+        return "BUY" if "BUY" in mathe_signal else "SELL" if "SELL" in mathe_signal else "WAIT", "Keine API-Schlüssel gefunden (Mathe-Modus)."
 
     prompt = f"""
     Du bist ein algorithmischer Handels-Bot für Gold (XAU/USD).
@@ -114,9 +111,10 @@ def dual_ai_filter(preis, dxy, rsi, mathe_signal):
         try:
             model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content(prompt)
-            return parse_ai_response(response.text, "Gemini 2.5")
+            if response.text and "SIGNAL:" in response.text:
+                return parse_ai_response(response.text, "Gemini 2.5")
         except Exception:
-            pass # Bei Fehler (z.B. Limit) direkt weiter zu Groq
+            pass # Bei jedem Fehler sofort weiter zu Groq
             
     # --- VERSUCH 2: GROQ / LLAMA 3 (Automatisches Backup) ---
     if keys["groq"] and groq_client:
@@ -126,12 +124,14 @@ def dual_ai_filter(preis, dxy, rsi, mathe_signal):
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=60
             )
-            return parse_ai_response(response.choices[0].message.content, "Groq / Llama3")
+            res_text = response.choices[0].message.content
+            if res_text and "SIGNAL:" in res_text:
+                return parse_ai_response(res_text, "Groq / Llama3")
         except Exception:
             pass
 
     # --- FALLBACK: REINE MATHEMATIK ---
-    return "BUY" if "BUY" in mathe_signal else "SELL" if "SELL" in mathe_signal else "WAIT", "Reiner Mathe-Modus aktiv (KIs temporär im Standby)."
+    return "BUY" if "BUY" in mathe_signal else "SELL" if "SELL" in mathe_signal else "WAIT", "KIs temporär im Limit. Verwende mathematischen Filter."
 
 def parse_ai_response(text, active_ai_name):
     final_sig = "BUY (LONG)" if "SIGNAL: BUY" in text else "SELL (SHORT)" if "SIGNAL: SELL" in text else "WAIT (SIDEWAYS)"
