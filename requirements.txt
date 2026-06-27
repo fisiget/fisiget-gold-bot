@@ -1,2 +1,3 @@
 pytz
 yfinance
+google-generativeai
