@@ -320,8 +320,8 @@ while True:
         
     mathe_roh_signal = "BUY" if pos == 1 else "SELL"
     
-    # --- KI-VALIDIERUNG (Alle 6 Sekunden ausführen) ---
-    if ki_takt % 3 == 0:
+    # --- KI-VALIDIERUNG (Exakt sauber eingerückt!) ---
+    if ki_takt % 10 == 0:
         aktuelles_ki_signal, aktuelle_ki_begruendung = ai_filter(current_src, mathe_roh_signal, src_history)
     ki_takt += 1
     
@@ -391,4 +391,4 @@ while True:
         </div>
         """)
         
-    time.sleep(2)
+    time.sleep(3)
