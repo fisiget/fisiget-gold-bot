@@ -8,11 +8,10 @@ import google.generativeai as genai  # Das Gehirn für die echte KI-Analyse
 # ==========================================
 # 1. LINK ZUM ECHTEN GOLDFOTO (PROFILBILD)
 # ==========================================
-# Hier ist ein echter, hochauflösender Bild-Link zu echtem Gold hinterlegt:
 GOLD_FOTO_URL = "https://images.unsplash.com/photo-1610374792793-f016b77ca51a?q=80&w=100&auto=format&fit=crop"
 
 # ==========================================
-# 2. SEITEN-KONFIGURATION & MODERNES DESIGN (PERFEKTER MOBILE-LOOK)
+# 2. SEITEN-KONFIGURATION & DESIGN (MOBILE-LOOK)
 # ==========================================
 st.set_page_config(page_title="Fisiget-Bot - Ultra AI", page_icon="🪙", layout="wide")
 
@@ -24,7 +23,7 @@ st.markdown(f"""
         font-family: sans-serif;
     }}
     
-    /* Smartphone-Container, der alles kompakt zusammenhält */
+    /* Smartphone-Container */
     .phone-container {{
         max-width: 440px;
         margin: 20px auto;
@@ -68,7 +67,7 @@ st.markdown(f"""
         text-align: center;
     }}
     
-    /* Der kreisrunde Signal-Indikator aus dem Foto */
+    /* Der kreisrunde Signal-Indikator */
     .signal-circle {{ 
         width: 150px; 
         height: 150px; 
@@ -115,12 +114,12 @@ st.markdown(f"""
         font-size: 13px;
     }}
 
-    /* STYLING FÜR DAS ECHTE GOLDFOTO (Rund geschnitten) */
+    /* STYLING FÜR GOLDFOTO */
     .gold-profile-img {{
         width: 26px;
         height: 26px;
         border-radius: 50%;
-        object-fit: cover; /* Verhindert Verzerrungen des Fotos */
+        object-fit: cover;
         border: 1.5px solid #d4af37;
         box-shadow: 0 0 8px rgba(214, 175, 55, 0.6);
         display: inline-block;
@@ -143,11 +142,12 @@ st.markdown(f"""
 app_layout_platzhalter = st.empty()
 
 # ==========================================
-# 3. KI-SETUP (ABSTURZSICHER FÜR LOCAL & ONLINE)
+# 3. KI-SETUP (AUTOMATISCHE ERKENNUNG)
 # ==========================================
 ki_bereit = False
 API_KEY = "DEIN_GEMINI_API_KEY"
 
+# Versucht den Key aus .streamlit/secrets.toml zu lesen
 try:
     if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
         API_KEY = st.secrets["GEMINI_API_KEY"]
@@ -159,7 +159,7 @@ if API_KEY != "DEIN_GEMINI_API_KEY" and API_KEY.strip() != "":
     ki_bereit = True
 
 # ==========================================
-# 4. INDIKATOREN & LIVE-MARKT-LOGIK
+# 4. INDIKATOREN & MARKT-LOGIK
 # ==========================================
 def check_market_state():
     tz = pytz.timezone('Europe/Berlin')
@@ -205,13 +205,10 @@ def calculate_rsi(history, period=14):
 def ai_filter(preis, dxy, rsi, mathe_signal, history):
     if not ki_bereit:
         return mathe_signal, "Verbindung zu KI-Auge steht noch aus (Reine Mathe-Berechnung)."
-    letzte_kurse = ", ".join([f"${k:.2f}" for k in history[-5:]])
-    dxy_text = f"${dxy:.2f}" if dxy else "Nicht verfügbar (Börse geschlossen)"
     
     prompt = f"""
     Du bist ein algorithmischer Handels-Bot für Gold (XAU/USD).
     AKTUELLE CHART-DATEN: Gold-Spotpreis: ${preis:.2f}, RSI: {rsi}
-    INTERMARKET-ANALYSE: US-Dollar Index (DXY): {dxy_text}
     ROH-STRATEGIE: {mathe_signal}
     Antworte streng nur in diesem Format:
     SIGNAL: [BUY, SELL oder WAIT]
@@ -228,7 +225,10 @@ def ai_filter(preis, dxy, rsi, mathe_signal, history):
                 begruendung = line.replace("BEGRÜNDUNG:", "").strip()
         return final_sig, begruendung
     except Exception as e:
-        return mathe_signal, f"KI-Timeout ({str(e)}). Nutze Mathe-Modus."
+        # Fängt den 42 quota Fehler sauber ab, ohne das Layout zu sprengen
+        if "429" in str(e):
+            return mathe_signal, "Gemini ist überlastet (Limit erreicht). Nutze temporär Mathe-Modus..."
+        return mathe_signal, f"KI temporär im Standby. Nutze Mathe-Modus."
 
 # ==========================================
 # 5. INITIALISIERUNG
@@ -249,7 +249,7 @@ aktuelles_ki_signal = "BUY (LONG)"
 aktuelle_ki_begruendung = "Sammle Marktdaten und kalibriere Indikatoren..."
 
 # ==========================================
-# 6. LIVE-TRADING-LOOP
+# 6. LIVE-TRADING-LOOP (TAKTRATE VERLANGSAMT)
 # ==========================================
 while True:
     market_state = check_market_state()
@@ -281,11 +281,12 @@ while True:
         
     mathe_roh_signal = "BUY" if pos == 1 else "SELL"
     
-    if ki_takt % 10 == 0:
+    # JETZT AUF % 20 GEÄNDERT (Fragt seltener ab, verhindert den Quota-Fehler)
+    if ki_takt % 20 == 0:
         aktuelles_ki_signal, aktuelle_ki_begruendung = ai_filter(current_src, live_dxy, aktueller_rsi, mathe_roh_signal, src_history)
     ki_takt += 1
     
-    # Trendpfeile (SVG)
+    # SVG Grafiken
     svg_buy = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18M23 6h-6M23 6v6"/></svg>'
     svg_sell = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M23 18l-9.5-9.5-5 5L1 6M23 18h-6M23 18v-6"/></svg>'
     svg_wait = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>'
@@ -309,7 +310,7 @@ while True:
     status_led = "● LIVE AI 👤 1,360" if ki_bereit else "● MATH MODE 👤 1"
     dxy_display = f"${live_dxy:.2f}" if live_dxy else "OTC 🔒"
 
-    # --- RENDER SMARTPHONE DASHBOARD ---
+    # --- RENDER DASHBOARD ---
     with app_layout_platzhalter.container():
         st.html(f"""
         <div class="phone-container">
