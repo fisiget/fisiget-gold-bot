@@ -1,3 +1,5 @@
-pytz
-yfinance
+streamlit
 google-generativeai
+openai
+yfinance
+pytz
