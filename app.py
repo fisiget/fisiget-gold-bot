@@ -2,10 +2,23 @@ import streamlit as st
 from datetime import datetime
 import time
 import pytz
-import MetaTrader5 as mt5
 import google.generativeai as genai
 from openai import OpenAI
 import random
+
+# Versuche MetaTrader5 zu laden (klappt lokal, schlägt online fehl)
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ModuleNotFoundError:
+    MT5_AVAILABLE = False
+
+# Versuche yfinance für den Online-Fallback zu laden
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ModuleNotFoundError:
+    YFINANCE_AVAILABLE = False
 
 # ==========================================
 # KONFIGURATION
@@ -72,18 +85,17 @@ if "force_ai" not in st.session_state:
 if "trade_timer" not in st.session_state: 
     st.session_state.trade_timer = TRADE_TIMER_SEC
 
-# Preisvariablen im Session State absichern
 if "broker_sell" not in st.session_state: st.session_state.broker_sell = 2330.0
 if "broker_buy" not in st.session_state: st.session_state.broker_buy = 2330.85
 if "broker_spread" not in st.session_state: st.session_state.broker_spread = 0.85
-if "connection_status" not in st.session_state: st.session_state.connection_status = "⚠️ Nicht verbunden"
+if "connection_status" not in st.session_state: st.session_state.connection_status = "⚠️ Initialisiere..."
 
 if st.button("Hidden Trigger", key="hidden_trigger", type="secondary"):
     st.session_state.force_ai = True
     st.rerun()
 
 # ==========================================
-# DIAGNOSE-DATA FEED (LOKALER MT5)
+# HYBRIDER DATA FEED (MT5 LOKAL / YFINANCE ONLINE)
 # ==========================================
 def check_market_state() -> str:
     tz = pytz.timezone("Europe/Berlin")
@@ -93,46 +105,61 @@ def check_market_state() -> str:
     return "LIVE"
 
 def get_broker_market_data():
-    if hasattr(st, "secrets") and "pepperstone" in st.secrets:
-        account_number = st.secrets["pepperstone"]["account"]
-        trading_password = st.secrets["pepperstone"]["password"]
-        broker_server = st.secrets["pepperstone"]["server"]
-    else:
-        st.session_state.connection_status = "❌ Fehler: secrets.toml fehlt oder unvollständig!"
-        return None
+    # WEG 1: LOKAL MIT METATRADER 5
+    if MT5_AVAILABLE:
+        if hasattr(st, "secrets") and "pepperstone" in st.secrets:
+            account_number = st.secrets["pepperstone"]["account"]
+            trading_password = st.secrets["pepperstone"]["password"]
+            broker_server = st.secrets["pepperstone"]["server"]
+        else:
+            st.session_state.connection_status = "❌ Fehler: secrets.toml fehlt lokal!"
+            return None
 
-    # 1. MT5 App auf dem PC starten
-    if not mt5.initialize():
-        st.session_state.connection_status = f"❌ MT5 konnte nicht gestartet werden! Fehler: {mt5.last_error()}"
-        return None
+        if not mt5.initialize():
+            st.session_state.connection_status = "❌ MT5 App nicht geöffnet!"
+            return None
+            
+        try:
+            clean_account = int(str(account_number).strip())
+            clean_password = str(trading_password).strip()
+            clean_server = str(broker_server).strip()
+            login_success = mt5.login(account=clean_account, password=clean_password, server=clean_server)
+        except Exception:
+            login_success = False
         
-    # 2. Login-Versuch
-    login_success = mt5.login(account=int(account_number), password=str(trading_password), server=str(broker_server))
-    
-    if not login_success:
-        error_code = mt5.last_error()
-        st.session_state.connection_status = f"❌ Pepperstone Login abgelehnt! Code: {error_code} (Prüfe Passwort/Server)"
-        return None
-    
-    # 3. Daten abrufen
-    tick = mt5.symbol_info_tick(BROKER_SYMBOL)
-    
-    if tick is not None:
-        bid = tick.bid
-        ask = tick.ask
+        if not login_success:
+            st.session_state.connection_status = "❌ Pepperstone Login fehlgeschlagen!"
+            return None
         
-        st.session_state.broker_sell = round(bid, 2)
-        st.session_state.broker_buy = round(ask, 2)
-        st.session_state.broker_spread = round((ask - bid), 2)
-        st.session_state.connection_status = "🟢 Erfolgreich mit Pepperstone MT5 verbunden!"
-        
-        return round((bid + ask) / 2, 2)
-        
-    st.session_state.connection_status = f"⚠️ Eingeloggt, aber Symbol '{BROKER_SYMBOL}' nicht in der MT5 Marktübersicht!"
-    return None
+        tick = mt5.symbol_info_tick(BROKER_SYMBOL)
+        if tick is not None:
+            st.session_state.broker_sell = round(tick.bid, 2)
+            st.session_state.broker_buy = round(tick.ask, 2)
+            st.session_state.broker_spread = round((tick.ask - tick.bid), 2)
+            st.session_state.connection_status = "🟢 Verbunden: Pepperstone MT5 (Lokal)"
+            return round((tick.bid + tick.ask) / 2, 2)
+
+    # WEG 2: ONLINE CLOUD FALLBACK MIT YFINANCE
+    if YFINANCE_AVAILABLE:
+        try:
+            gold = yf.Ticker("GC=F")
+            data = gold.fast_info
+            current_price = round(data.last_price, 2)
+            
+            st.session_state.broker_sell = round(current_price - 0.4, 2)
+            st.session_state.broker_buy = round(current_price + 0.4, 2)
+            st.session_state.broker_spread = 0.80
+            st.session_state.connection_status = "🟢 Verbunden: Yahoo Finance Live Feed (Cloud Mode)"
+            return current_price
+        except Exception:
+            pass
+
+    # WEG 3: SIMULATION ALS LETZTER AUSWEG
+    st.session_state.connection_status = "⚠️ Keine Live-Verbindung. Simuliere Daten..."
+    return round(st.session_state.src_history[-1] + random.uniform(-0.2, 0.2), 2)
 
 # ==========================================
-# INDIKATOREN
+# INDIKATOREN & AI MODUL
 # ==========================================
 def calculate_rsi(prices, period=14):
     if len(prices) < period + 1: return 50.0
@@ -157,9 +184,6 @@ def ut_bot_step(src, last_src, trail, pos, atr):
     elif last_src > trail and src < trail: pos = -1
     return trail, pos
 
-# ==========================================
-# DUAL-AI
-# ==========================================
 AI_PROMPT = """Du bist ein algorithmischer Handels-Bot für Gold (XAU/USD).
 DATEN: Gold=${preis:.2f} | RSI={rsi} | Signal: {signal}
 Antworte NUR so:
@@ -190,28 +214,26 @@ def dual_ai_filter(preis, rsi, mathe_signal):
     return fallback, "KI nicht verfügbar – Mathe-Modus."
 
 # ==========================================
-# SIGNAL CONFIG
-def make_svg(path, color="white"):
-    return f'<svg viewBox="0 0 24 24" style="width:74px;height:74px;fill:none;stroke:{color};stroke-width:3;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 14px rgba(255,255,255,0.95)) drop-shadow(0 0 6px {color});"><path d="{path}"/></svg>'
-
+# UI RENDERING & SYSTEM STATS
+# ==========================================
 SIGNAL_CONFIG = {
     "BUY": {
         "color": "#00e676", "glow": "#00e676",
         "bg": "radial-gradient(circle at 50% 40%, #00e676 0%, #00c853 30%, #004d2e 70%, #001a10 100%)",
         "dir": "UPWARD", "win": "82%", "dots": 5,
-        "svg": make_svg("M23 6l-9.5 9.5-5-5L1 18M23 6h-6M23 6v6", "#fff"),
+        "svg": '<svg viewBox="0 0 24 24" style="width:74px;height:74px;fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;"><path d="M23 6l-9.5 9.5-5-5L1 18M23 6h-6M23 6v6"/></svg>',
     },
     "SELL": {
         "color": "#ff1744", "glow": "#ff1744",
         "bg": "radial-gradient(circle at 50% 40%, #ff5252 0%, #ff1744 30%, #4d0010 70%, #1a0005 100%)",
         "dir": "DOWNWARD", "win": "89%", "dots": 4,
-        "svg": make_svg("M23 18l-9.5-9.5-5 5L1 6M23 18h-6M23 18v-6", "#fff"),
+        "svg": '<svg viewBox="0 0 24 24" style="width:74px;height:74px;fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;"><path d="M23 18l-9.5-9.5-5 5L1 6M23 18h-6M23 18v-6"/></svg>',
     },
     "WAIT": {
         "color": "#ffc400", "glow": "#ffc400",
         "bg": "radial-gradient(circle at 50% 40%, #ffd740 0%, #ffc400 30%, #4d3800 70%, #1a1200 100%)",
         "dir": "SIDEWAYS", "win": "—", "dots": 2,
-        "svg": make_svg("M5 12h14M13 5l7 7-7 7", "#fff"),
+        "svg": '<svg viewBox="0 0 24 24" style="width:74px;height:74px;fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;"><path d="M5 12h14M13 5l7 7-7 7"/></svg>',
     },
 }
 
@@ -220,89 +242,40 @@ def get_sig_key(s):
     if "SELL" in s: return "SELL"
     return "WAIT"
 
-# ==========================================
-# MARKTZEITEN SESSIONS
-# ==========================================
 def get_market_sessions():
     tz = pytz.timezone("Europe/Berlin")
     now = datetime.now(tz)
     weekday = now.weekday()
     h = now.hour + now.minute / 60.0
-
     sessions = [
         {"name": "Sydney", "flag": "🇦🇺", "open_h": 0.0, "close_h": 9.0, "days": [0,1,2,3,4]},
         {"name": "Tokio", "flag": "🇯🇵", "open_h": 1.0, "close_h": 10.0, "days": [0,1,2,3,4]},
         {"name": "London", "flag": "🇬🇧", "open_h": 9.0, "close_h": 18.0, "days": [0,1,2,3,4]},
         {"name": "New York", "flag": "🇺🇸", "open_h": 14.0, "close_h": 23.0, "days": [0,1,2,3,4]},
     ]
-
     result = []
     for s in sessions:
         is_open = weekday in s["days"] and s["open_h"] <= h < s["close_h"]
-        if is_open:
-            mins_left = int((s["close_h"] - h) * 60)
-            status = f"Schließt in {mins_left}min"
-            color = "#00e676"
-            dot = "🟢"
-        elif weekday in s["days"] and h < s["open_h"]:
-            mins_to = int((s["open_h"] - h) * 60)
-            status = f"Öffnet in {mins_to}min"
-            color = "#ffc400"
-            dot = "🟡"
-        else:
-            status = f"Geschlossen"
-            color = "#ff1744"
-            dot = "🔴"
+        status = f"Schließt in {int((s['close_h'] - h) * 60)}min" if is_open else "Geschlossen"
         result.append({
-            "name": s["name"], "flag": s["flag"],
-            "open": f"{int(s['open_h']):02d}:00", "close": f"{int(s['close_h']):02d}:00",
-            "is_open": is_open, "status": status, "color": color, "dot": dot,
+            "name": s["name"], "flag": s["flag"], "open": f"{int(s['open_h']):02d}:00", "close": f"{int(s['close_h']):02d}:00",
+            "is_open": is_open, "status": status, "color": "#00e676" if is_open else "#ff1744", "dot": "🟢" if is_open else "🔴"
         })
     return result
 
-def build_market_hours_html(sessions):
-    rows = ""
-    for s in sessions:
-        rows += f"""
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #1a2540;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:16px;">{s['flag']}</span>
-            <div>
-              <div style="font-size:12px;font-weight:700;color:#fff;">{s['name']}</div>
-              <div style="font-size:10px;color:#4b6080;">{s['open']} – {s['close']} (Berlin)</div>
-            </div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-size:11px;font-weight:700;color:{s['color']};">{s['dot']} {'OFFEN' if s['is_open'] else 'GESCHLOSSEN'}</div>
-            <div style="font-size:10px;color:#4b6080;">{s['status']}</div>
-          </div>
-        </div>"""
-    return rows
-
-# ==========================================
-# TIMING & PIPELINE LOGIC
-# ==========================================
+# Execution Pipeline
 market_state = check_market_state()
-live_gold = get_broker_market_data()
-
-# Wenn MT5 fehlschlägt, simulieren wir zur Überbrückung sanfte Schwankungen
-if live_gold:
-    current_price = live_gold
-else:
-    current_price = round(st.session_state.src_history[-1] + random.uniform(-0.3, 0.3), 2)
-
-price_label = f"${current_price:,.2f}"
+current_price = get_broker_market_data()
+if not current_price:
+    current_price = st.session_state.src_history[-1]
 
 last_src = st.session_state.src_history[-1]
 st.session_state.src_history.append(current_price)
-if len(st.session_state.src_history) > 25:
-    st.session_state.src_history.pop(0)
+if len(st.session_state.src_history) > 25: st.session_state.src_history.pop(0)
 
 rsi = calculate_rsi(st.session_state.src_history)
 atr = calculate_atr(st.session_state.src_history, ATR_PERIOD)
-st.session_state.trail, st.session_state.pos = ut_bot_step(
-    current_price, last_src, st.session_state.trail, st.session_state.pos, atr
-)
+st.session_state.trail, st.session_state.pos = ut_bot_step(current_price, last_src, st.session_state.trail, st.session_state.pos, atr)
 mathe_signal = "BUY" if st.session_state.pos == 1 else "SELL"
 
 current_time = time.time()
@@ -311,182 +284,70 @@ if (current_time - st.session_state.last_ai_run >= 60.0) or st.session_state.for
     st.session_state.last_ai_run = current_time
     st.session_state.force_ai = False
 
-seconds_since_last_run = current_time - st.session_state.last_ai_run
-seconds_until_next_run = max(0, int(60 - seconds_since_last_run))
-
-st.session_state.trade_timer -= 1
-if st.session_state.trade_timer <= 0:
-    st.session_state.trade_timer = TRADE_TIMER_SEC
+seconds_until_next_run = max(0, int(60 - (current_time - st.session_state.last_ai_run)))
+st.session_state.trade_timer = st.session_state.trade_timer - 1 if st.session_state.trade_timer > 1 else TRADE_TIMER_SEC
 
 sessions = get_market_sessions()
-market_hours_html = build_market_hours_html(sessions)
 open_count = sum(1 for s in sessions if s["is_open"])
-
 sig_key = get_sig_key(st.session_state.ki_signal)
 cfg = SIGNAL_CONFIG[sig_key]
-mode_label = "LIVE AI" if any(keys.values()) else "MATH MODE"
 dots_filled = "●" * cfg["dots"] + "○" * (5 - cfg["dots"])
-dots_sub_text = f"{cfg['dots']}/5"
 
-# ==========================================
-# RENDER LAYOUT
-# ==========================================
-# ECHTER VERBINDUNGSSTATUS ALS OBERES BANNER ANZEIGEN
+# Render Status Message
 if "🟢" in st.session_state.connection_status:
     st.success(st.session_state.connection_status)
 else:
     st.error(st.session_state.connection_status)
 
+# HTML UI Injection
 st.html(f"""
 <!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ background: #0a0f1a; font-family: 'Inter', sans-serif; }}
-  @keyframes blink {{ 0%,100%{{opacity:1;}} 50%{{opacity:0.2;}} }}
-  @keyframes glow-pulse {{
-    0%, 100% {{ box-shadow: 0 0 60px {cfg['glow']}88, 0 0 120px {cfg['glow']}44; }}
-    50%       {{ box-shadow: 0 0 80px {cfg['glow']}bb, 0 0 160px {cfg['glow']}66; }}
-  }}
   .app {{ display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; background: #0a0f1a; }}
-  .phone {{ width: 100%; max-width: 100%; background: #0d1320; border-radius: 0; border: none; overflow: hidden; }}
-  .topbar {{ display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 12px; border-bottom: 1px solid #1a2540; }}
-  .logo {{ font-size: 15px; font-weight: 900; color: #fff; display: flex; align-items: center; gap: 8px; }}
-  .live-badge {{ font-size: 11px; font-weight: 700; color: #00e676; display: flex; align-items: center; gap: 6px; }}
-  .dot-live {{ width: 7px; height: 7px; border-radius: 50%; background: #00e676; animation: blink 1.2s infinite; }}
-  .body {{ width: 100%; max-width: 480px; margin: 0 auto; padding: 20px 18px 16px; box-sizing: border-box; }}
-  .back-btn {{ color: #00e676; font-size: 20px; margin-bottom: 12px; cursor: pointer; display: inline-block; }}
-  .signal-header {{ font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 6px; text-align: center; }}
-  .signal-header span {{ color: #00e676; }}
-  .signal-tf {{ font-size: 13px; font-weight: 700; color: #4b6080; margin-bottom: 24px; text-align: center; }}
-  .circle-outer {{ display: flex; justify-content: center; margin-bottom: 18px; }}
-  .circle-main {{
-    width: 180px; height: 180px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    background: {cfg['bg']}; box-shadow: 0 0 60px {cfg['glow']}88, 0 0 120px {cfg['glow']}44; animation: glow-pulse 2s ease-in-out infinite;
-  }}
-  .dir-badge {{ display: block; width: fit-content; margin: 0 auto 8px; background: #0d1320; border: 1.5px solid {cfg['color']}; border-radius: 20px; padding: 5px 20px; font-size: 12px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: {cfg['color']}; }}
-  .signal-text {{ text-align: center; font-size: 34px; font-weight: 900; color: {cfg['color']}; text-shadow: 0 0 30px {cfg['glow']}88; margin-bottom: 18px; letter-spacing: 0.5px; }}
-  .stats-row {{ display: flex; gap: 10px; margin-bottom: 12px; }}
-  .stat-card {{ flex: 1; background: #0a0f1a; border: 1px solid #1a2540; border-radius: 14px; padding: 12px 14px; }}
-  .stat-label {{ font-size: 10px; color: #4b6080; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px; }}
-  .stat-dots {{ font-size: 16px; letter-spacing: 4px; color: {cfg['color']}; margin-bottom: 3px; }}
-  .stat-sub {{ font-size: 11px; color: #4b6080; font-weight: 700; }}
-  .stat-winrate {{ font-size: 28px; font-weight: 900; color: {cfg['color']}; line-height: 1; }}
-  .stat-live {{ font-size: 10px; color: #4b6080; margin-top: 4px; }}
-  .ai-bar {{ background: #0a0f1a; border: 1px solid #1a2540; border-radius: 12px; padding: 11px 16px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px; font-size: 12px; font-weight: 700; color: #00e676; letter-spacing: 1px; }}
-  .trade-timer {{ background: #0a0f1a; border: 1px solid #1a2540; border-radius: 12px; padding: 10px 16px; text-align: center; margin-bottom: 12px; font-size: 12px; font-weight: 700; color: #4b6080; letter-spacing: 1px; }}
-  .trade-timer span {{ color: #00e676; font-size: 14px; }}
-  .gen-btn {{ width: 100%; border: none; border-radius: 14px; background: linear-gradient(135deg, #00e676, #00c853); color: #0a0d14; font-size: 15px; font-weight: 800; padding: 16px; letter-spacing: 0.5px; cursor: pointer; margin-bottom: 12px; box-shadow: 0 6px 24px rgba(0,230,118,0.35); transition: all 0.2s; font-family: Inter, sans-serif; }}
-  .ssl-bar {{ text-align: center; font-size: 10px; color: #2a3a50; padding: 8px 0; }}
-  .nav-bar {{ display: flex; justify-content: space-around; align-items: center; padding: 14px 20px 18px; border-top: 1px solid #1a2540; background: #090d18; }}
-  .nav-item {{ display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: #2a3a50; cursor: pointer; }}
-  .nav-item.active {{ background: #00e676; color: #0a0f1a; padding: 8px 18px; border-radius: 12px; gap: 3px; }}
-  .nav-icon {{ font-size: 16px; }}
-
+  .phone {{ width: 100%; max-width: 480px; background: #0d1320; margin: 0 auto; overflow: hidden; }}
+  .topbar {{ display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #1a2540; }}
+  .logo {{ font-size: 15px; font-weight: 900; color: #fff; }}
+  .body {{ padding: 20px 18px; }}
+  .signal-header {{ font-size: 16px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 4px; }}
+  .signal-tf {{ font-size: 13px; color: #4b6080; text-align: center; margin-bottom: 20px; }}
   .trading-prices {{ display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 20px; }}
-  .price-button {{ flex: 1; background: rgba(10, 15, 26, 0.6); border-radius: 10px; padding: 10px; text-align: center; font-family: monospace; }}
-  .price-button.sell {{ border: 1.5px solid #ff1744; }}
-  .price-button.buy {{ border: 1.5px solid #2563eb; }}
-  .price-num-sell {{ font-size: 17px; font-weight: 700; color: #ff1744; }}
-  .price-num-buy {{ font-size: 17px; font-weight: 700; color: #2563eb; }}
-  .price-label-sub {{ font-size: 9px; color: #4b6080; text-transform: uppercase; font-weight: 700; margin-top: 2px; }}
+  .price-button {{ flex: 1; background: rgba(10, 15, 26, 0.6); border-radius: 10px; padding: 10px; text-align: center; }}
+  .price-button.sell {{ border: 1.5px solid #ff1744; color: #ff1744; }}
+  .price-button.buy {{ border: 1.5px solid #2563eb; color: #2563eb; }}
+  .circle-outer {{ display: flex; justify-content: center; margin-bottom: 18px; }}
+  .circle-main {{ width: 180px; height: 180px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: {cfg['bg']}; box-shadow: 0 0 60px {cfg['glow']}88; }}
+  .signal-text {{ text-align: center; font-size: 34px; font-weight: 900; color: {cfg['color']}; margin-bottom: 18px; }}
+  .ai-bar {{ background: #0a0f1a; border: 1px solid #1a2540; border-radius: 12px; padding: 11px; text-align: center; color: #00e676; font-size: 12px; font-weight: 700; margin-bottom: 10px; }}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="phone">
-    <div class="topbar">
-      <div class="logo">🪙 FISIGET BOT</div>
-      <div class="live-badge"><div class="dot-live"></div> {mode_label} | {market_state} | 👤 1,360</div>
-    </div>
-
+    <div class="topbar"><div class="logo">🪙 FISIGET BOT</div></div>
     <div class="body">
-      <div class="back-btn">←</div>
-      <div class="signal-header">Gold Spot / U.S. Dollar · <span>PEPPERSTONE FEED</span></div>
-      <div class="signal-tf">Mittelkurs: {price_label} &nbsp;·&nbsp; TF: 1 SEC</div>
-
+      <div class="signal-header">Gold Spot / U.S. Dollar</div>
+      <div class="signal-tf">Mittelkurs: ${current_price:,.2f} · TF: 1 SEC</div>
       <div class="trading-prices">
-        <div class="price-button sell">
-          <div class="price-num-sell">{st.session_state.broker_sell:,.2f}</div>
-          <div class="price-label-sub">BID (Verkauf)</div>
-        </div>
-        <div style="font-size:12px; color:#9ca3af; font-weight:700; font-family:monospace;">{st.session_state.broker_spread:.2f}</div>
-        <div class="price-button buy">
-          <div class="price-num-buy">{st.session_state.broker_buy:,.2f}</div>
-          <div class="price-label-sub">ASK (Kauf)</div>
-        </div>
+        <div class="price-button sell"><h3>{st.session_state.broker_sell:,.2f}</h3><div>BID</div></div>
+        <div class="price-button buy"><h3>{st.session_state.broker_buy:,.2f}</h3><div>ASK</div></div>
       </div>
-
-      <div class="circle-outer">
-        <div id="mainCircle" class="circle-main">{cfg['svg']}</div>
-      </div>
-
-      <span class="dir-badge">{cfg['dir']}</span>
+      <div class="circle-outer"><div class="circle-main">{cfg['svg']}</div></div>
       <div class="signal-text">{st.session_state.ki_signal}</div>
-
-      <div class="stats-row">
-        <div class="stat-card">
-          <div class="stat-label">Signal Strength</div>
-          <div class="stat-dots">{dots_filled}</div>
-          <div class="stat-sub">{dots_sub_text}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Win Rate</div>
-          <div class="stat-winrate">{cfg['win']}</div>
-          <div class="stat-live">Live</div>
-        </div>
+      <div class="ai-bar">NEXT AI UPDATE IN {seconds_until_next_run}s</div>
+      <div style="background:#0a0f1a; border:1px solid #1a2540; border-radius:12px; padding:12px; font-size:12px; color:#4b6080;">
+        <span style="color:#fff; font-weight:700;">🤖 AI-Reasoning:</span> {st.session_state.ki_reason}
       </div>
-
-      <div class="ai-bar">
-        <span class="dot-live"></span> NEXT AI UPDATE IN {seconds_until_next_run}s
-      </div>
-
-      <div class="trade-timer">
-        TRADE TIMER: <span>{st.session_state.trade_timer}s</span>
-      </div>
-
-      <button id="genBtn" class="gen-btn" onclick="
-        var c = document.getElementById('mainCircle');
-        c.style.animation = 'spinOnce 0.9s cubic-bezier(0.4, 0, 0.2, 1) forwards';
-        document.querySelector('.stButton button').click();
-      ">
-        Generate New Signal
-      </button>
-
-      <div style="background:#0a0f1a;border:1px solid #1a2540;border-radius:12px;padding:12px 14px;font-size:11px;color:#4b6080;line-height:1.5;margin-bottom:14px;">
-        <div style="font-size:10px;color:#2a3a50;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700;">🤖 AI-Reasoning</div>
-        {st.session_state.ki_reason}
-      </div>
-
-      <div style="margin-bottom:6px;">
-        <div style="width:100%;background:#0a0f1a;border:1px solid #1a2540;border-radius:12px;padding:12px 14px;color:#fff;font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
-          <span>Analyse-Märkte &nbsp;<span style="background:#00e67622;color:#00e676;border-radius:8px;padding:2px 8px;font-size:11px;">{open_count}/4 Aktiv</span></span>
-        </div>
-        <div style="background:#0a0f1a;border:1px solid #1a2540;border-top:none;border-radius:0 0 12px 12px;overflow:hidden;">
-          {market_hours_html}
-        </div>
-      </div>
-
-      <div class="ssl-bar">🔒 SSL Secured &nbsp;|&nbsp; 🔒 256-bit Encrypted</div>
     </div>
-
-    <div class="nav-bar">
-      <div class="nav-item active"><span class="nav-icon">📈</span>TRADE</div>
-      <div class="nav-item"><span class="nav-icon">⚡</span>LIVE FEED</div>
-      <div class="nav-item"><img src="{GOLD_FOTO_URL}" style="width:20px;height:20px;border-radius:50%;border:1.5px solid #d4af37;object-fit:cover;"><span>PROFILE</span></div>
-    </div>
-
   </div>
 </div>
 </body>
 </html>
 """)
 
-# ==========================================
-# AUTOMATISCHER SEKUNDEN-TICKER
-# ==========================================
 time.sleep(1)
 st.rerun()
