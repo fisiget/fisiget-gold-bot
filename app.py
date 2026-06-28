@@ -96,24 +96,20 @@ def check_market_state() -> str:
     return "LIVE"
 
 def get_broker_market_data():
-    # 1. Daten unsichtbar und verschlüsselt aus den Secrets laden
     if hasattr(st, "secrets") and "pepperstone" in st.secrets:
         account_number = st.secrets["pepperstone"]["account"]
         trading_password = st.secrets["pepperstone"]["password"]
         broker_server = st.secrets["pepperstone"]["server"]
     else:
-        # Falls du die secrets.toml vergessen hast, nutzt der Bot diesen statischen Fallback
         return None
 
     if not mt5.initialize():
         return None
         
-    # Sicherer automatischer Login in dein Demo-Konto
     login_success = mt5.login(account=int(account_number), password=str(trading_password), server=str(broker_server))
     if not login_success:
         return None
     
-    # Live-Tick-Daten für Gold abfragen
     tick = mt5.symbol_info_tick(BROKER_SYMBOL)
     
     if tick is not None:
@@ -322,6 +318,9 @@ cfg = SIGNAL_CONFIG[sig_key]
 mode_label = "LIVE AI" if any(keys.values()) else "MATH MODE"
 dots_filled = "●" * cfg["dots"] + "○" * (5 - cfg["dots"])
 
+# Vorab-Berechnung für den fehlerfreien Sub-Text (Behebt SyntaxError!)
+dots_sub_text = cfg['dots_sub'] if 'dots_sub' in cfg else f"{cfg['dots']}/5"
+
 # ==========================================
 # RENDER LAYOUT
 # ==========================================
@@ -420,7 +419,7 @@ st.html(f"""
         <div class="stat-card">
           <div class="stat-label">Signal Strength</div>
           <div class="stat-dots">{dots_filled}</div>
-          <div class="stat-sub">{cfg['dots_sub'] if 'dots_sub' in cfg else f"{cfg['dots']}/5"}</div>
+          <div class="stat-sub">{dots_sub_text}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Win Rate</div>
