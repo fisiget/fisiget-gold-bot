@@ -2,7 +2,7 @@ import streamlit as st
 from datetime import datetime
 import time
 import pytz
-import yfinance as yf
+import MetaTrader5 as mt5
 import google.generativeai as genai
 from openai import OpenAI
 import random
@@ -14,6 +14,7 @@ GOLD_FOTO_URL = "https://images.unsplash.com/photo-1610374792793-f016b77ca51a?q=
 ATR_PERIOD = 10
 KEY_VALUE = 1.0
 TRADE_TIMER_SEC = 10
+BROKER_SYMBOL = "XAUUSD"
 
 st.set_page_config(
     page_title="Fisiget Bot – Gold AI",
@@ -55,9 +56,9 @@ keys, groq_client = init_clients()
 # STATE INIT
 # ==========================================
 if "src_history" not in st.session_state:
-    st.session_state.src_history = [2350.0] * 15
+    st.session_state.src_history = [2330.0] * 15
 if "trail" not in st.session_state:
-    st.session_state.trail = 2345.0
+    st.session_state.trail = 2325.0
 if "pos" not in st.session_state:
     st.session_state.pos = 1
 if "ki_signal" not in st.session_state:
@@ -66,24 +67,23 @@ if "ki_reason" not in st.session_state:
     st.session_state.ki_reason = "Initialisiere AI Pipeline…"
 if "last_ai_run" not in st.session_state:
     st.session_state.last_ai_run = 0.0  
-if "price_tick" not in st.session_state:
-    st.session_state.price_tick = 0
 if "force_ai" not in st.session_state: 
     st.session_state.force_ai = False
 if "trade_timer" not in st.session_state: 
     st.session_state.trade_timer = TRADE_TIMER_SEC
 
-# Cloud-sichere Preisvariablen
-if "broker_sell" not in st.session_state: st.session_state.broker_sell = 2350.0
-if "broker_buy" not in st.session_state: st.session_state.broker_buy = 2350.85
+# Preisvariablen im Session State absichern
+if "broker_sell" not in st.session_state: st.session_state.broker_sell = 2330.0
+if "broker_buy" not in st.session_state: st.session_state.broker_buy = 2330.85
 if "broker_spread" not in st.session_state: st.session_state.broker_spread = 0.85
+if "connection_status" not in st.session_state: st.session_state.connection_status = "⚠️ Nicht verbunden"
 
 if st.button("Hidden Trigger", key="hidden_trigger", type="secondary"):
     st.session_state.force_ai = True
     st.rerun()
 
 # ==========================================
-# CLOUD LIVE DATA FEED (Ohne MT5 Windows-Zwang)
+# DIAGNOSE-DATA FEED (LOKALER MT5)
 # ==========================================
 def check_market_state() -> str:
     tz = pytz.timezone("Europe/Berlin")
@@ -92,32 +92,43 @@ def check_market_state() -> str:
         return "OTC"
     return "LIVE"
 
-@st.cache_data(ttl=2)
-def get_cloud_market_data():
-    try:
-        # Greift auf den stabilen Gold-Spot-Verlauf zu
-        gold_data = yf.Ticker("GC=F").history(period="1d", interval="1m")
-        if not gold_data.empty:
-            base_price = float(gold_data["Close"].iloc[-1])
-            
-            # Da yfinance minütlich cached, simulieren wir die echten Pepperstone-Zuckungen 
-            # im Sekundentakt über einen kleinen Random-Tick (Spiegelung des Live-Marktes)
-            if check_market_state() == "LIVE":
-                tick_movement = random.choice([-0.15, -0.05, 0.0, 0.05, 0.15])
-                base_price += tick_movement
-                
-            mid_price = round(base_price, 2)
-            
-            # Berechnet die typischen engen Pepperstone Razor-Spreads (ca. 0.40 - 0.90 Ticks)
-            live_spread = round(random.uniform(0.45, 0.75), 2)
-            
-            st.session_state.broker_sell = round(mid_price - (live_spread / 2), 2)
-            st.session_state.broker_buy = round(mid_price + (live_spread / 2), 2)
-            st.session_state.broker_spread = live_spread
-            
-            return mid_price
-    except Exception:
-        pass
+def get_broker_market_data():
+    if hasattr(st, "secrets") and "pepperstone" in st.secrets:
+        account_number = st.secrets["pepperstone"]["account"]
+        trading_password = st.secrets["pepperstone"]["password"]
+        broker_server = st.secrets["pepperstone"]["server"]
+    else:
+        st.session_state.connection_status = "❌ Fehler: secrets.toml fehlt oder unvollständig!"
+        return None
+
+    # 1. MT5 App auf dem PC starten
+    if not mt5.initialize():
+        st.session_state.connection_status = f"❌ MT5 konnte nicht gestartet werden! Fehler: {mt5.last_error()}"
+        return None
+        
+    # 2. Login-Versuch
+    login_success = mt5.login(account=int(account_number), password=str(trading_password), server=str(broker_server))
+    
+    if not login_success:
+        error_code = mt5.last_error()
+        st.session_state.connection_status = f"❌ Pepperstone Login abgelehnt! Code: {error_code} (Prüfe Passwort/Server)"
+        return None
+    
+    # 3. Daten abrufen
+    tick = mt5.symbol_info_tick(BROKER_SYMBOL)
+    
+    if tick is not None:
+        bid = tick.bid
+        ask = tick.ask
+        
+        st.session_state.broker_sell = round(bid, 2)
+        st.session_state.broker_buy = round(ask, 2)
+        st.session_state.broker_spread = round((ask - bid), 2)
+        st.session_state.connection_status = "🟢 Erfolgreich mit Pepperstone MT5 verbunden!"
+        
+        return round((bid + ask) / 2, 2)
+        
+    st.session_state.connection_status = f"⚠️ Eingeloggt, aber Symbol '{BROKER_SYMBOL}' nicht in der MT5 Marktübersicht!"
     return None
 
 # ==========================================
@@ -272,8 +283,13 @@ def build_market_hours_html(sessions):
 # TIMING & PIPELINE LOGIC
 # ==========================================
 market_state = check_market_state()
-live_gold = get_cloud_market_data()
-current_price = live_gold if live_gold else st.session_state.src_history[-1]
+live_gold = get_broker_market_data()
+
+# Wenn MT5 fehlschlägt, simulieren wir zur Überbrückung sanfte Schwankungen
+if live_gold:
+    current_price = live_gold
+else:
+    current_price = round(st.session_state.src_history[-1] + random.uniform(-0.3, 0.3), 2)
 
 price_label = f"${current_price:,.2f}"
 
@@ -315,6 +331,12 @@ dots_sub_text = f"{cfg['dots']}/5"
 # ==========================================
 # RENDER LAYOUT
 # ==========================================
+# ECHTER VERBINDUNGSSTATUS ALS OBERES BANNER ANZEIGEN
+if "🟢" in st.session_state.connection_status:
+    st.success(st.session_state.connection_status)
+else:
+    st.error(st.session_state.connection_status)
+
 st.html(f"""
 <!DOCTYPE html>
 <html>
@@ -325,7 +347,6 @@ st.html(f"""
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ background: #0a0f1a; font-family: 'Inter', sans-serif; }}
   @keyframes blink {{ 0%,100%{{opacity:1;}} 50%{{opacity:0.2;}} }}
-  @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(10px); }} to {{ opacity: 1; transform: translateY(0); }} }}
   @keyframes glow-pulse {{
     0%, 100% {{ box-shadow: 0 0 60px {cfg['glow']}88, 0 0 120px {cfg['glow']}44; }}
     50%       {{ box-shadow: 0 0 80px {cfg['glow']}bb, 0 0 160px {cfg['glow']}66; }}
@@ -384,7 +405,7 @@ st.html(f"""
 
     <div class="body">
       <div class="back-btn">←</div>
-      <div class="signal-header">Gold Spot / U.S. Dollar · <span>PEPPERSTONE REALTIME</span></div>
+      <div class="signal-header">Gold Spot / U.S. Dollar · <span>PEPPERSTONE FEED</span></div>
       <div class="signal-tf">Mittelkurs: {price_label} &nbsp;·&nbsp; TF: 1 SEC</div>
 
       <div class="trading-prices">
