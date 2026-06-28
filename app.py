@@ -2,241 +2,576 @@ import streamlit as st
 from datetime import datetime
 import time
 import pytz
-import yfinance as yf  
-import google.generativeai as genai  
-from openai import OpenAI  # Groq nutzt die OpenAI-Bibliothek
+import yfinance as yf
+import google.generativeai as genai
+from openai import OpenAI
 
 # ==========================================
-# 1. LINK ZUM ECHTEN GOLDFOTO (PROFILBILD)
+# KONFIGURATION
 # ==========================================
 GOLD_FOTO_URL = "https://images.unsplash.com/photo-1610374792793-f016b77ca51a?q=80&w=100&auto=format&fit=crop"
+ATR_PERIOD = 10
+KEY_VALUE = 1.0
+KI_INTERVALL = 15
+
+st.set_page_config(
+    page_title="Fisiget Bot – Gold AI",
+    page_icon="🪙",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 # ==========================================
-# 2. SEITEN-KONFIGURATION & DESIGN (MOBILE-LOOK)
+# CSS + JS
 # ==========================================
-st.set_page_config(page_title="Fisiget-Bot - Dual AI", page_icon="🪙", layout="wide")
-
-st.markdown(f"""
+st.markdown("""
 <style>
-    .stApp {{ background-color: #0c0c0c; color: white; font-family: sans-serif; }}
-    .phone-container {{ max-width: 440px; margin: 20px auto; background-color: #161616; border-radius: 30px; border: 1px solid #252525; box-shadow: 0 20px 50px rgba(0,0,0,0.8); overflow: hidden; }}
-    .trading-card {{ padding: 25px 25px 15px 25px; text-align: center; }}
-    .header-top {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 14px; border-bottom: 1px solid #222; padding-bottom: 12px; }}
-    .metric-container {{ display: flex; justify-content: space-between; gap: 10px; margin-top: 15px; }}
-    .metric-box {{ background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 10px; width: 48%; text-align: center; }}
-    .signal-circle {{ width: 150px; height: 150px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 20px auto; }}
-    .circle-buy {{ background: radial-gradient(circle, #10b981 0%, #064e3b 100%); box-shadow: 0 0 40px rgba(16, 185, 129, 0.7); }}
-    .circle-sell {{ background: radial-gradient(circle, #ef4444 0%, #7f1d1d 100%); box-shadow: 0 0 40px rgba(239, 68, 68, 0.7); }}
-    .circle-wait {{ background: radial-gradient(circle, #f59e0b 0%, #78350f 100%); box-shadow: 0 0 40px rgba(245, 158, 11, 0.7); }}
-    .huge-signal-text {{ font-size: 34px !important; font-weight: 900 !important; text-align: center; margin: 5px 0 !important; letter-spacing: 0.5px; }}
-    .stat-box-row {{ display: flex; justify-content: space-around; margin-top: 20px; border-top: 1px solid #222; padding-top: 15px; }}
-    .nav-bar {{ display: flex; justify-content: space-around; align-items: center; padding: 18px 10px; border-top: 1px solid #222; background-color: #111; color: #888; font-weight: bold; font-size: 13px; }}
-    .gold-profile-img {{ width: 26px; height: 26px; border-radius: 50%; object-fit: cover; border: 1.5px solid #d4af37; box-shadow: 0 0 8px rgba(214, 175, 55, 0.6); display: inline-block; }}
-    .trend-svg {{ width: 75px; height: 75px; fill: none; stroke: white; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.3)); }}
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+        background-color: #0a0d14 !important;
+        color: #e2e8f0;
+    }
+    .stApp { background-color: #0a0d14; }
+    .block-container { padding: 0 !important; max-width: 100% !important; }
+    header[data-testid="stHeader"] { background: transparent; }
+
+    .outer {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        padding: 20px 12px 40px;
+        box-sizing: border-box;
+        gap: 24px;
+    }
+
+    .phone {
+        width: 100%;
+        max-width: 420px;
+        background: #11151f;
+        border-radius: 32px;
+        border: 1px solid #1e2535;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.7);
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 22px 14px;
+        border-bottom: 1px solid #1e2535;
+    }
+    .logo { font-size: 15px; font-weight: 900; color: #fff; display: flex; align-items: center; gap: 8px; }
+    .status-pill { font-size: 11px; font-weight: 700; color: #10b981; display: flex; align-items: center; gap: 5px; }
+    .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; animation: blink 1.4s infinite; }
+    @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+    .body { padding: 24px 22px; flex: 1; }
+
+    .asset-label { text-align: center; font-size: 13px; color: #6b7280; letter-spacing: 1px; margin-bottom: 2px; }
+    .asset-title { text-align: center; font-size: 17px; font-weight: 800; color: #fff; margin-bottom: 2px; }
+    .timeframe { text-align: center; font-size: 11px; color: #4b5563; margin-bottom: 28px; }
+
+    /* CIRCLE + SPIN ANIMATION */
+    .circle-wrap { display: flex; justify-content: center; margin-bottom: 20px; }
+
+    .signal-circle {
+        width: 180px; height: 180px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        transition: transform 0.1s;
+    }
+    /* Spin animation triggered by JS */
+    @keyframes spinOnce {
+        0%   { transform: rotate(0deg) scale(1); }
+        30%  { transform: rotate(200deg) scale(1.08); }
+        70%  { transform: rotate(340deg) scale(1.04); }
+        100% { transform: rotate(360deg) scale(1); }
+    }
+    .signal-circle.spinning {
+        animation: spinOnce 0.9s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    /* Outer ring that spins separately */
+    .circle-outer-ring {
+        position: relative;
+        width: 200px; height: 200px;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .ring-svg {
+        position: absolute;
+        top: 0; left: 0;
+        width: 200px; height: 200px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    .ring-svg.show { opacity: 1; }
+    @keyframes rotateRing {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+    }
+    .ring-svg.show circle {
+        animation: rotateRing 0.9s linear forwards;
+        transform-origin: center;
+    }
+
+    .circle-buy  { background: radial-gradient(circle at 40% 35%, #22c55e, #064e3b 80%); box-shadow: 0 0 0 18px rgba(16,185,129,0.08), 0 0 60px rgba(16,185,129,0.5); }
+    .circle-sell { background: radial-gradient(circle at 40% 35%, #f87171, #7f1d1d 80%); box-shadow: 0 0 0 18px rgba(239,68,68,0.08), 0 0 60px rgba(239,68,68,0.5); }
+    .circle-wait { background: radial-gradient(circle at 40% 35%, #fbbf24, #78350f 80%); box-shadow: 0 0 0 18px rgba(245,158,11,0.08), 0 0 60px rgba(245,158,11,0.5); }
+    .trend-svg { width: 80px; height: 80px; fill: none; stroke: white; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4)); }
+
+    .dir-badge {
+        display: block; margin: 0 auto 10px; width: fit-content;
+        background: #1a2235; border: 1px solid #2a3550; border-radius: 20px;
+        padding: 4px 18px; font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+    }
+    .signal-text { text-align: center; font-size: 36px; font-weight: 900; letter-spacing: 1px; margin-bottom: 24px; }
+
+    .stats-row { display: flex; gap: 12px; margin-bottom: 20px; }
+    .stat-box { flex: 1; background: #0d1220; border: 1px solid #1e2a40; border-radius: 16px; padding: 14px 16px; }
+    .stat-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .stat-dots { font-size: 16px; letter-spacing: 3px; margin-bottom: 2px; }
+    .stat-sub { font-size: 11px; color: #4b5563; }
+    .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 900; }
+    .stat-live { font-size: 11px; color: #4b5563; margin-top: 2px; }
+
+    .ai-row { text-align: center; font-size: 12px; color: #10b981; font-weight: 700; letter-spacing: 1px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+    .metrics-mini { background: #0d1220; border: 1px solid #1e2a40; border-radius: 16px; padding: 14px 16px; margin-bottom: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
+    .mini-item { display: flex; flex-direction: column; gap: 2px; }
+    .mini-label { font-size: 10px; color: #4b5563; text-transform: uppercase; letter-spacing: 1px; }
+    .mini-value { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; }
+
+    .insight-box { background: #0d1220; border: 1px solid #1e2a40; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; font-size: 12px; color: #9ca3af; line-height: 1.6; }
+    .insight-title { font-size: 10px; color: #4b5563; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; }
+
+    /* BUTTONS */
+    .btn-row { display: flex; gap: 10px; margin-bottom: 8px; }
+
+    .gen-btn {
+        flex: 1;
+        background: linear-gradient(135deg, #10b981, #059669);
+        border: none; border-radius: 16px;
+        color: white; font-size: 14px; font-weight: 800;
+        padding: 15px 10px; text-align: center;
+        letter-spacing: 0.3px;
+        box-shadow: 0 4px 20px rgba(16,185,129,0.35);
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .gen-btn:active { transform: scale(0.97); }
+    .gen-btn-sell { background: linear-gradient(135deg, #ef4444, #b91c1c) !important; box-shadow: 0 4px 20px rgba(239,68,68,0.35) !important; }
+    .gen-btn-wait { background: linear-gradient(135deg, #f59e0b, #d97706) !important; box-shadow: 0 4px 20px rgba(245,158,11,0.35) !important; }
+
+    /* NEW SIGNAL BUTTON */
+    .new-signal-btn {
+        flex: 1;
+        background: transparent;
+        border: 2px solid #10b981;
+        border-radius: 16px;
+        color: #10b981;
+        font-size: 13px; font-weight: 800;
+        padding: 15px 10px; text-align: center;
+        letter-spacing: 0.3px;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s, transform 0.15s;
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .new-signal-btn:hover { background: rgba(16,185,129,0.1); }
+    .new-signal-btn:active { transform: scale(0.97); }
+    .new-signal-btn.loading {
+        background: rgba(16,185,129,0.15);
+        color: #6ee7b7;
+        pointer-events: none;
+    }
+    .btn-spinner {
+        width: 14px; height: 14px;
+        border: 2px solid #10b981;
+        border-top-color: transparent;
+        border-radius: 50%;
+        display: none;
+        animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .new-signal-btn.loading .btn-spinner { display: inline-block; }
+    .new-signal-btn.loading .btn-icon { display: none; }
+
+    /* NAV BAR */
+    .nav-bar { display: flex; justify-content: space-around; align-items: center; padding: 16px 10px 20px; border-top: 1px solid #1e2535; background: #0d1118; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #6b7280; font-weight: 600; cursor: pointer; }
+    .nav-item.active { color: #10b981; }
+    .nav-icon { font-size: 18px; }
+
+    /* DESKTOP SIDEBAR */
+    .sidebar { display: none; width: 280px; flex-shrink: 0; }
+    @media (min-width: 900px) { .sidebar { display: flex; flex-direction: column; gap: 16px; padding-top: 20px; } }
+    .side-card { background: #11151f; border: 1px solid #1e2535; border-radius: 20px; padding: 20px; }
+    .side-title { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: #4b5563; margin-bottom: 14px; font-weight: 700; }
+    .side-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid #1a2235; }
+    .side-row:last-child { border-bottom: none; }
+    .side-label { font-size: 12px; color: #6b7280; }
+    .side-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; }
 </style>
+
+<script>
+function triggerNewSignal() {
+    const btn = document.getElementById('newSignalBtn');
+    const circle = document.getElementById('mainCircle');
+    if (!circle || !btn) return;
+
+    // Button: loading state
+    btn.classList.add('loading');
+    btn.querySelector('.btn-text').textContent = 'Analysiere…';
+
+    // Circle: spin animation
+    circle.classList.remove('spinning');
+    void circle.offsetWidth; // reflow to restart animation
+    circle.classList.add('spinning');
+
+    // After spin: reset
+    setTimeout(() => {
+        circle.classList.remove('spinning');
+        btn.classList.remove('loading');
+        btn.querySelector('.btn-text').textContent = 'Neues Signal';
+    }, 950);
+}
+</script>
 """, unsafe_allow_html=True)
 
-app_layout_platzhalter = st.empty()
+# ==========================================
+# API SETUP
+# ==========================================
+@st.cache_resource
+def init_clients():
+    keys = {"gemini": None, "groq": None}
+    groq_client = None
+    if hasattr(st, "secrets"):
+        keys["gemini"] = st.secrets.get("GEMINI_API_KEY")
+        keys["groq"] = st.secrets.get("GROQ_API_KEY")
+    if keys["gemini"]:
+        genai.configure(api_key=keys["gemini"])
+    if keys["groq"]:
+        groq_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=keys["groq"])
+    return keys, groq_client
+
+keys, groq_client = init_clients()
 
 # ==========================================
-# 3. DUAL-KI SETUP (STREAMLIT CLOUD SECRETS)
+# MARKT-DATEN
 # ==========================================
-keys = {"gemini": None, "groq": None}
-groq_client = None
-
-if hasattr(st, "secrets"):
-    keys["gemini"] = st.secrets.get("GEMINI_API_KEY")
-    keys["groq"] = st.secrets.get("GROQ_API_KEY")
-
-if keys["gemini"]:
-    genai.configure(api_key=keys["gemini"])
-if keys["groq"]:
-    groq_client = OpenAI(
-        base_url="https://api.groq.com/openai/v1",
-        api_key=keys["groq"]
-    )
-
-# ==========================================
-# 4. INDIKATOREN & MARKT-DATEN
-# ==========================================
-def check_market_state():
-    tz = pytz.timezone('Europe/Berlin')
+def check_market_state() -> str:
+    tz = pytz.timezone("Europe/Berlin")
     now = datetime.now(tz)
-    if (now.weekday() == 4 and now.hour >= 23) or (now.weekday() == 5) or (now.weekday() == 6 and now.hour < 23):
+    if (now.weekday() == 4 and now.hour >= 23) or now.weekday() == 5 or (now.weekday() == 6 and now.hour < 23):
         return "OTC"
     return "LIVE"
 
+@st.cache_data(ttl=10)
 def get_market_data():
     gold_price, dxy_price = None, None
     try:
-        gold = yf.Ticker("GC=F")
-        g_data = gold.history(period="1d", interval="1m")
-        if not g_data.empty: gold_price = round(g_data['Close'].iloc[-1], 2)
-        dxy = yf.Ticker("DX=F")
-        d_data = dxy.history(period="1d", interval="1m")
-        if not d_data.empty: dxy_price = round(d_data['Close'].iloc[-1], 2)
-    except: pass
+        gold_data = yf.Ticker("GC=F").history(period="1d", interval="1m")
+        if not gold_data.empty:
+            gold_price = round(float(gold_data["Close"].iloc[-1]), 2)
+        dxy_data = yf.Ticker("DX=F").history(period="1d", interval="1m")
+        if not dxy_data.empty:
+            dxy_price = round(float(dxy_data["Close"].iloc[-1]), 2)
+    except Exception:
+        pass
     return gold_price, dxy_price
 
-def calculate_rsi(history, period=14):
-    if len(history) < period + 1: return 50.0
+# ==========================================
+# INDIKATOREN
+# ==========================================
+def calculate_rsi(prices: list, period: int = 14) -> float:
+    if len(prices) < period + 1:
+        return 50.0
     gains, losses = [], []
-    for i in range(1, len(history)):
-        diff = history[i] - history[i-1]
-        if diff > 0: gains.append(diff); losses.append(0)
-        else: gains.append(0); losses.append(abs(diff))
+    for i in range(1, len(prices)):
+        diff = prices[i] - prices[i - 1]
+        gains.append(max(diff, 0))
+        losses.append(max(-diff, 0))
     avg_gain = sum(gains[-period:]) / period
     avg_loss = sum(losses[-period:]) / period
-    if avg_loss == 0: return 100.0
-    return round(100.0 - (100.0 / (100.0 + (avg_gain / avg_loss))), 1)
+    if avg_loss == 0:
+        return 100.0
+    return round(100.0 - (100.0 / (1.0 + avg_gain / avg_loss)), 1)
+
+def calculate_atr(prices: list, period: int) -> float:
+    diffs = [abs(prices[i] - prices[i - 1]) for i in range(1, len(prices))]
+    if len(diffs) < period:
+        return 1.5
+    return sum(diffs[-period:]) / period
+
+def ut_bot_step(src: float, last_src: float, trail: float, pos: int, atr: float) -> tuple:
+    n_loss = KEY_VALUE * atr
+    if src > trail and last_src > trail:
+        trail = max(trail, src - n_loss)
+    elif src < trail and last_src < trail:
+        trail = min(trail, src + n_loss)
+    else:
+        trail = src - n_loss if src > trail else src + n_loss
+    if last_src < trail and src > trail:
+        pos = 1
+    elif last_src > trail and src < trail:
+        pos = -1
+    return trail, pos
 
 # ==========================================
-# 5. DIE INTELLIGENTE DUAL-AI PIPELINE
+# DUAL-AI PIPELINE
 # ==========================================
-def dual_ai_filter(preis, dxy, rsi, mathe_signal):
-    if not keys["gemini"] and not keys["groq"]:
-        return "BUY" if "BUY" in mathe_signal else "SELL" if "SELL" in mathe_signal else "WAIT", "Keine API-Schlüssel gefunden (Mathe-Modus)."
+AI_PROMPT = """Du bist ein algorithmischer Handels-Bot für Gold (XAU/USD).
+DATEN: Gold=${preis:.2f} | RSI={rsi} | Mathematisches Signal: {signal}
+Antworte NUR in diesem Format:
+SIGNAL: [BUY|SELL|WAIT]
+BEGRÜNDUNG: [max. 15 Wörter]"""
 
-    prompt = f"""
-    Du bist ein algorithmischer Handels-Bot für Gold (XAU/USD).
-    AKTUELLE CHART-DATEN: Gold-Spotpreis: ${preis:.2f}, RSI: {rsi}
-    ROH-STRATEGIE-PROGNOSE: {mathe_signal}
-    Antworte streng nur in diesem Format:
-    SIGNAL: [BUY, SELL oder WAIT]
-    BEGRÜNDUNG: [Deine Begründung in genau einem kurzen Satz]
-    """
-    
-    # --- VERSUCH 1: GEMINI (Haupt-KI) ---
+def parse_ai_response(text: str, source: str) -> tuple:
+    signal, reason = "WAIT", "Analyse abgeschlossen."
+    for line in text.strip().splitlines():
+        if line.startswith("SIGNAL:"):
+            raw = line.replace("SIGNAL:", "").strip().upper()
+            signal = "BUY (LONG)" if "BUY" in raw else "SELL (SHORT)" if "SELL" in raw else "WAIT (SIDEWAYS)"
+        elif line.startswith("BEGRÜNDUNG:"):
+            reason = line.replace("BEGRÜNDUNG:", "").strip()
+    return signal, f"[{source}]: {reason}"
+
+def dual_ai_filter(preis: float, rsi: float, mathe_signal: str) -> tuple:
+    fallback_sig = "BUY (LONG)" if "BUY" in mathe_signal else "SELL (SHORT)" if "SELL" in mathe_signal else "WAIT (SIDEWAYS)"
+    if not any(keys.values()):
+        return fallback_sig, "Kein API-Key – Mathe-Modus aktiv."
+    prompt = AI_PROMPT.format(preis=preis, rsi=rsi, signal=mathe_signal)
     if keys["gemini"]:
         try:
             model = genai.GenerativeModel("gemini-2.5-flash")
-            response = model.generate_content(prompt)
-            if response.text and "SIGNAL:" in response.text:
-                return parse_ai_response(response.text, "Gemini 2.5")
-        except Exception:
-            pass # Bei Fehlern direkt weiter zu Groq
-            
-    # --- VERSUCH 2: GROQ / LLAMA 3.1 (Aktualisiertes Modell) ---
-    if keys["groq"] and groq_client:
-        try:
-            response = groq_client.chat.completions.create(
-                model="llama-3.1-8b-instant", 
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=60
-            )
-            res_text = response.choices[0].message.content
-            if res_text and "SIGNAL:" in res_text:
-                return parse_ai_response(res_text, "Groq / Llama3.1")
+            resp = model.generate_content(prompt)
+            if resp.text and "SIGNAL:" in resp.text:
+                return parse_ai_response(resp.text, "Gemini 2.5 Flash")
         except Exception:
             pass
-
-    # --- FALLBACK: REINE MATHEMATIK ---
-    return "BUY" if "BUY" in mathe_signal else "SELL" if "SELL" in mathe_signal else "WAIT", "KIs temporär im Limit. Verwende mathematischen Filter."
-
-def parse_ai_response(text, active_ai_name):
-    final_sig = "BUY (LONG)" if "SIGNAL: BUY" in text else "SELL (SHORT)" if "SIGNAL: SELL" in text else "WAIT (SIDEWAYS)"
-    begruendung = "Analyse abgeschlossen."
-    for line in text.split("\n"):
-        if line.startswith("BEGRÜNDUNG:"):
-            begruendung = line.replace("BEGRÜNDUNG:", "").strip()
-    return final_sig, f"[{active_ai_name}]: {begruendung}"
+    if keys["groq"] and groq_client:
+        try:
+            resp = groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=60, temperature=0.1,
+            )
+            text = resp.choices[0].message.content
+            if text and "SIGNAL:" in text:
+                return parse_ai_response(text, "Groq / Llama 3.1")
+        except Exception:
+            pass
+    return fallback_sig, "KI temporär nicht verfügbar – Mathe-Modus."
 
 # ==========================================
-# 6. INITIALISIERUNG & LIVE-TRADING-LOOP
+# SIGNAL CONFIG
 # ==========================================
-key_value, atr_period, src_history, xATRTrailingStop, pos = 1.0, 10, [], 0.0, 1
-start_preis, _ = get_market_data()
-start_preis = start_preis or 2350.0
-src_history = [start_preis] * 15
-xATRTrailingStop = start_preis - 5.0
+SVG_BUY  = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18M23 6h-6M23 6v6"/></svg>'
+SVG_SELL = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M23 18l-9.5-9.5-5 5L1 6M23 18h-6M23 18v-6"/></svg>'
+SVG_WAIT = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>'
 
-ki_takt = 0
-aktuelles_ki_signal = "BUY (LONG)"
-aktuelle_ki_begruendung = "Initialisiere Dual-AI Pipeline (Gemini + Groq)..."
+SIGNAL_CONFIG = {
+    "BUY":  {"class": "circle-buy",  "color": "#10b981", "dir": "UPWARD",   "svg": SVG_BUY,  "win": "92.1%", "dots": "●●●●○", "dots_sub": "4/5", "btn_extra": ""},
+    "SELL": {"class": "circle-sell", "color": "#ef4444", "dir": "DOWNWARD", "svg": SVG_SELL, "win": "89.4%", "dots": "●●●●○", "dots_sub": "4/5", "btn_extra": "gen-btn-sell"},
+    "WAIT": {"class": "circle-wait", "color": "#f59e0b", "dir": "SIDEWAYS", "svg": SVG_WAIT, "win": "  —  ", "dots": "●●○○○", "dots_sub": "2/5", "btn_extra": "gen-btn-wait"},
+}
+
+def get_signal_key(signal: str) -> str:
+    if "BUY" in signal: return "BUY"
+    if "SELL" in signal: return "SELL"
+    return "WAIT"
+
+# ==========================================
+# STATE INIT
+# ==========================================
+if "src_history" not in st.session_state:
+    start_price, _ = get_market_data()
+    start_price = start_price or 2350.0
+    st.session_state.src_history = [start_price] * 15
+    st.session_state.trail = start_price - 5.0
+    st.session_state.pos = 1
+    st.session_state.ki_takt = 0
+    st.session_state.ki_signal = "BUY (LONG)"
+    st.session_state.ki_reason = "Initialisiere Dual-AI Pipeline…"
+
+# ==========================================
+# MAIN LOOP
+# ==========================================
+placeholder = st.empty()
 
 while True:
     market_state = check_market_state()
-    asset_name = f"XAU/USD ({market_state})"
     live_gold, live_dxy = get_market_data()
-    current_src = live_gold if live_gold is not None else src_history[-1]
-    
-    last_src = src_history[-1]
-    src_history.append(current_src)
-    if len(src_history) > 25: src_history.pop(0)
-    aktueller_rsi = calculate_rsi(src_history)
-    
-    # UT-Bot Logik (Mathematischer Filter)
-    diffs = [abs(src_history[i] - src_history[i-1]) for i in range(1, len(src_history))]
-    xATR = sum(diffs[-atr_period:]) / atr_period if len(diffs) >= atr_period else 1.5
-    nLoss = key_value * xATR
-    if current_src > xATRTrailingStop and last_src > xATRTrailingStop: xATRTrailingStop = max(xATRTrailingStop, current_src - nLoss)
-    elif current_src < xATRTrailingStop and last_src < xATRTrailingStop: xATRTrailingStop = min(xATRTrailingStop, current_src + nLoss)
-    else: xATRTrailingStop = current_src - nLoss if current_src > xATRTrailingStop else current_src + nLoss
-    if last_src < xATRTrailingStop and current_src > xATRTrailingStop: pos = 1
-    elif last_src > xATRTrailingStop and current_src < xATRTrailingStop: pos = -1
-    mathe_roh_signal = "BUY" if pos == 1 else "SELL"
-    
-    # Takt-Abfrage für die KIs alle 15 Takt-Einheiten
-    if ki_takt % 15 == 0:
-        aktuelles_ki_signal, aktuelle_ki_begruendung = dual_ai_filter(current_src, live_dxy, aktueller_rsi, mathe_roh_signal)
-    ki_takt += 1
-    
-    # SVGs für UI
-    svg_buy = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18M23 6h-6M23 6v6"/></svg>'
-    svg_sell = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M23 18l-9.5-9.5-5 5L1 6M23 18h-6M23 18v-6"/></svg>'
-    svg_wait = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>'
+    current_price = live_gold if live_gold is not None else st.session_state.src_history[-1]
 
-    if "BUY" in aktuelles_ki_signal: circle_class, text_color, direction_text, active_svg, win_rate, strength_dots, strength_sub = "circle-buy", "#10b981", "UPWARD", svg_buy, "92.1%", "●●●●○", "4/5"
-    elif "SELL" in aktuelles_ki_signal: circle_class, text_color, direction_text, active_svg, win_rate, strength_dots, strength_sub = "circle-sell", "#ef4444", "DOWNWARD", svg_sell, "89.4%", "●●●●○", "4/5"
-    else: circle_class, text_color, direction_text, active_svg, win_rate, strength_dots, strength_sub = "circle-wait", "#f59e0b", "SIDEWAYS", svg_wait, "--.-%", "●●○○○", "2/5"
+    last_src = st.session_state.src_history[-1]
+    st.session_state.src_history.append(current_price)
+    if len(st.session_state.src_history) > 25:
+        st.session_state.src_history.pop(0)
 
-    status_text = "● DUAL AI SYSTEM ACTIVE 👤 1,360" if any(keys.values()) else "● MATH MODE 👤 1"
+    rsi = calculate_rsi(st.session_state.src_history)
+    atr = calculate_atr(st.session_state.src_history, ATR_PERIOD)
+    st.session_state.trail, st.session_state.pos = ut_bot_step(
+        current_price, last_src, st.session_state.trail, st.session_state.pos, atr
+    )
+    mathe_signal = "BUY" if st.session_state.pos == 1 else "SELL"
+
+    if st.session_state.ki_takt % KI_INTERVALL == 0:
+        st.session_state.ki_signal, st.session_state.ki_reason = dual_ai_filter(
+            current_price, rsi, mathe_signal
+        )
+    st.session_state.ki_takt += 1
+
+    sig_key = get_signal_key(st.session_state.ki_signal)
+    cfg = SIGNAL_CONFIG[sig_key]
+    rsi_color = "#10b981" if rsi < 30 else "#ef4444" if rsi > 70 else "#3b82f6"
     dxy_display = f"${live_dxy:.2f}" if live_dxy else "OTC 🔒"
+    takte_bis_ki = KI_INTERVALL - (st.session_state.ki_takt % KI_INTERVALL)
+    mode_label = "DUAL AI" if any(keys.values()) else "MATH MODE"
+    math_color = "#10b981" if mathe_signal == "BUY" else "#ef4444"
+    btn_label = "↑ LONG / BUY" if "BUY" in st.session_state.ki_signal else "↓ SHORT / SELL" if "SELL" in st.session_state.ki_signal else "→ WAIT / HOLD"
 
-    with app_layout_platzhalter.container():
+    with placeholder.container():
         st.html(f"""
-        <div class="phone-container">
-            <div class="trading-card">
-                <div class="header-top">
-                    <div style="font-weight:bold; color:white;">🤖 FISIGET BOT</div>
-                    <div style="color: #10b981; font-weight:bold;">{status_text}</div>
-                </div>
-                <div style="text-align: left; margin-bottom: 10px;">
-                    <h3 style="margin:0; color:white; font-size:18px;">Signal for: <span style="color:#10b981;">{asset_name}</span></h3>
-                    <div style="color: #888; font-size:12px;">Timeframe: 10 SEC | Price: ${current_src:,.2f}</div>
-                </div>
-                <div class="signal-circle {circle_class}">{active_svg}</div>
-                <div style="color: {text_color}; font-weight:bold; font-size:14px; text-transform:uppercase; letter-spacing:1px;">{direction_text}</div>
-                <div class="huge-signal-text" style="color: white;">{aktuelles_ki_signal}</div>
-                <div class="stat-box-row">
-                    <div style="text-align: center;">
-                        <div style="font-size:10px; color:#888; text-transform:uppercase;">Signal Strength</div>
-                        <div style="color:{text_color}; font-size:16px; letter-spacing:2px;">{strength_dots}</div>
-                        <div style="font-size:11px; color:#6b7280;">{strength_sub}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size:10px; color:#888; text-transform:uppercase;">Win Rate</div>
-                        <div style="font-size:20px; font-weight:bold; color:#10b981;">{win_rate}</div>
-                        <div style="font-size:11px; color:#6b7280;">Live</div>
-                    </div>
-                </div>
-                <div class="metric-container">
-                    <div class="metric-box"><span style="color:#6b7280; font-size:10px; display:block;">RSI (14)</span><span style="color:#3b82f6; font-size:16px; font-weight:bold;">{aktueller_rsi}</span></div>
-                    <div class="metric-box"><span style="color:#6b7280; font-size:10px; display:block;">US-Dollar (DXY)</span><span style="color:#fff; font-size:16px; font-weight:bold;">{dxy_display}</span></div>
-                </div>
-                <div style="margin-top: 20px; color:#10b981; font-size:12px; font-weight:bold;">● AI PIPELINE SWITCHER LIVE...</div>
-                <div style="margin-top: 10px; color:#9ca3af; font-size:12px; font-style: italic; background:#111827; padding:12px; border-radius:10px; border: 1px solid #1f2937; text-align: left;">
-                    🤖 <b>AI-Insight:</b> {aktuelle_ki_begruendung}
-                </div>
+        <div class="outer">
+
+          <!-- PHONE -->
+          <div class="phone">
+            <div class="topbar">
+              <div class="logo">🪙 FISIGET BOT</div>
+              <div class="status-pill">
+                <div class="pulse-dot"></div>
+                {mode_label} | {market_state} | 👤 1,360
+              </div>
             </div>
+
+            <div class="body">
+              <div class="asset-label">Signal for:</div>
+              <div class="asset-title">XAU / USD ({market_state})</div>
+              <div class="timeframe">Timeframe: 10 SEC &nbsp;·&nbsp; ${current_price:,.2f}</div>
+
+              <!-- CIRCLE mit ID für JS -->
+              <div class="circle-wrap">
+                <div id="mainCircle" class="signal-circle {cfg['class']}">{cfg['svg']}</div>
+              </div>
+
+              <span class="dir-badge" style="color:{cfg['color']};">{cfg['dir']}</span>
+              <div class="signal-text" style="color:{cfg['color']};">{st.session_state.ki_signal}</div>
+
+              <div class="stats-row">
+                <div class="stat-box">
+                  <div class="stat-label">Signal Strength</div>
+                  <div class="stat-dots" style="color:{cfg['color']};">{cfg['dots']}</div>
+                  <div class="stat-sub">{cfg['dots_sub']}</div>
+                </div>
+                <div class="stat-box" style="text-align:right;">
+                  <div class="stat-label">Win Rate</div>
+                  <div class="stat-value" style="color:#10b981;">{cfg['win']}</div>
+                  <div class="stat-live">Live</div>
+                </div>
+              </div>
+
+              <div class="ai-row">● AI PIPELINE ACTIVE &nbsp;·&nbsp; KI-Update in {takte_bis_ki} Takten</div>
+
+              <div class="metrics-mini">
+                <div class="mini-item">
+                  <span class="mini-label">RSI (14)</span>
+                  <span class="mini-value" style="color:{rsi_color};">{rsi}</span>
+                </div>
+                <div class="mini-item">
+                  <span class="mini-label">DXY</span>
+                  <span class="mini-value">{dxy_display}</span>
+                </div>
+                <div class="mini-item">
+                  <span class="mini-label">ATR</span>
+                  <span class="mini-value" style="color:#6b7280;">{atr:.2f}</span>
+                </div>
+                <div class="mini-item">
+                  <span class="mini-label">Math Signal</span>
+                  <span class="mini-value" style="color:{math_color};">{mathe_signal}</span>
+                </div>
+              </div>
+
+              <div class="insight-box">
+                <div class="insight-title">🤖 AI-Reasoning</div>
+                {st.session_state.ki_reason}
+              </div>
+
+              <!-- BUTTON ROW: Signal + Neues Signal -->
+              <div class="btn-row">
+                <div class="gen-btn {cfg['btn_extra']}">{btn_label}</div>
+                <button id="newSignalBtn" class="new-signal-btn"
+                  onclick="(function(){{var btn=document.getElementById('newSignalBtn');var c=document.getElementById('mainCircle');if(!c||!btn)return;btn.disabled=true;btn.style.opacity='0.6';btn.querySelector('.btn-text').textContent='Analysiere…';btn.querySelector('.btn-icon').style.display='none';btn.querySelector('.btn-spinner').style.display='inline-block';c.style.animation='none';void c.offsetWidth;c.style.animation='spinOnce 0.9s cubic-bezier(0.4,0,0.2,1) forwards';setTimeout(function(){{c.style.animation='';btn.querySelector('.btn-text').textContent='Neues Signal';btn.querySelector('.btn-spinner').style.display='none';btn.querySelector('.btn-icon').style.display='inline';btn.disabled=false;btn.style.opacity='1';}},980);}})()"
+                >
+                  <span class="btn-spinner" style="width:13px;height:13px;border:2px solid #10b981;border-top-color:transparent;border-radius:50%;display:none;animation:spin 0.6s linear infinite;vertical-align:middle;"></span>
+                  <span class="btn-icon">🔄</span>
+                  <span class="btn-text">Neues Signal</span>
+                </button>
+              </div>
+              <style>
+                @keyframes spinOnce{{0%{{transform:rotate(0deg) scale(1);}}35%{{transform:rotate(210deg) scale(1.1);}}70%{{transform:rotate(340deg) scale(1.04);}}100%{{transform:rotate(360deg) scale(1);}}}}
+                @keyframes spin{{to{{transform:rotate(360deg);}}}}
+              </style>
+
+            </div>
+
             <div class="nav-bar">
-                <div style="color:white; cursor:pointer;">📈 TRADE</div>
-                <div style="cursor:pointer;">⚡ LIVE FEED</div>
-                <div style="cursor:pointer; display: flex; align-items: center; gap: 8px;">
-                    <img class="gold-profile-img" src="{GOLD_FOTO_URL}" alt="Gold Profile">
-                    <span style="color: #d4af37;">PROFILE</span>
-                </div>
+              <div class="nav-item active">
+                <span class="nav-icon">📈</span><span>TRADE</span>
+              </div>
+              <div class="nav-item">
+                <span class="nav-icon">⚡</span><span>LIVE FEED</span>
+              </div>
+              <div class="nav-item">
+                <img src="{GOLD_FOTO_URL}" style="width:22px;height:22px;border-radius:50%;border:1.5px solid #d4af37;object-fit:cover;" alt="P">
+                <span style="color:#d4af37;">PROFILE</span>
+              </div>
             </div>
+          </div>
+
+          <!-- DESKTOP SIDEBAR -->
+          <div class="sidebar">
+            <div class="side-card">
+              <div class="side-title">📊 Marktdaten</div>
+              <div class="side-row">
+                <span class="side-label">XAU/USD</span>
+                <span class="side-value" style="color:#f59e0b;">${current_price:,.2f}</span>
+              </div>
+              <div class="side-row">
+                <span class="side-label">DXY</span>
+                <span class="side-value">{dxy_display}</span>
+              </div>
+              <div class="side-row">
+                <span class="side-label">RSI (14)</span>
+                <span class="side-value" style="color:{rsi_color};">{rsi}</span>
+              </div>
+              <div class="side-row">
+                <span class="side-label">ATR</span>
+                <span class="side-value">{atr:.2f}</span>
+              </div>
+              <div class="side-row">
+                <span class="side-label">Math Signal</span>
+                <span class="side-value" style="color:{math_color};">{mathe_signal}</span>
+              </div>
+              <div class="side-row">
+                <span class="side-label">Markt</span>
+                <span class="side-value">{market_state}</span>
+              </div>
+            </div>
+            <div class="side-card">
+              <div class="side-title">🤖 AI Insight</div>
+              <div style="font-size:12px;color:#9ca3af;line-height:1.7;">{st.session_state.ki_reason}</div>
+              <div style="margin-top:12px;font-size:10px;color:#374151;">
+                Gemini 2.5 Flash → Groq Llama 3.1 → Math<br>
+                KI-Update in {takte_bis_ki} Takten
+              </div>
+            </div>
+          </div>
+
         </div>
         """)
+
     time.sleep(3)
