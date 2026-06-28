@@ -269,16 +269,29 @@ def check_market_state() -> str:
         return "OTC"
     return "LIVE"
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=60)
 def get_market_data():
     gold_price, dxy_price = None, None
     try:
-        gold_data = yf.Ticker("GC=F").history(period="1d", interval="1m")
-        if not gold_data.empty:
-            gold_price = round(float(gold_data["Close"].iloc[-1]), 2)
-        dxy_data = yf.Ticker("DX=F").history(period="1d", interval="1m")
-        if not dxy_data.empty:
-            dxy_price = round(float(dxy_data["Close"].iloc[-1]), 2)
+        tz = pytz.timezone("Europe/Berlin")
+        now = datetime.now(tz)
+        is_weekend = now.weekday() >= 5 or (now.weekday() == 4 and now.hour >= 23)
+
+        if is_weekend:
+            # Letzten Freitag-Schlusskurs laden (5 Tage History, Tages-Intervall)
+            gold_data = yf.Ticker("GC=F").history(period="5d", interval="1d")
+            if not gold_data.empty:
+                gold_price = round(float(gold_data["Close"].iloc[-1]), 2)
+            dxy_data = yf.Ticker("DX=F").history(period="5d", interval="1d")
+            if not dxy_data.empty:
+                dxy_price = round(float(dxy_data["Close"].iloc[-1]), 2)
+        else:
+            gold_data = yf.Ticker("GC=F").history(period="1d", interval="1m")
+            if not gold_data.empty:
+                gold_price = round(float(gold_data["Close"].iloc[-1]), 2)
+            dxy_data = yf.Ticker("DX=F").history(period="1d", interval="1m")
+            if not dxy_data.empty:
+                dxy_price = round(float(dxy_data["Close"].iloc[-1]), 2)
     except Exception:
         pass
     return gold_price, dxy_price
@@ -433,6 +446,8 @@ while True:
     mode_label = "DUAL AI" if any(keys.values()) else "MATH MODE"
     math_color = "#10b981" if mathe_signal == "BUY" else "#ef4444"
     btn_label = "↑ LONG / BUY" if "BUY" in st.session_state.ki_signal else "↓ SHORT / SELL" if "SELL" in st.session_state.ki_signal else "→ WAIT / HOLD"
+    is_weekend = datetime.now(pytz.timezone('Europe/Berlin')).weekday() >= 5
+    price_label = f"Fr. Schluss: \${current_price:,.2f}" if is_weekend else f"\${current_price:,.2f}"
 
     with placeholder.container():
         st.html(f"""
@@ -451,7 +466,7 @@ while True:
             <div class="body">
               <div class="asset-label">Signal for:</div>
               <div class="asset-title">XAU / USD ({market_state})</div>
-              <div class="timeframe">Timeframe: 10 SEC &nbsp;·&nbsp; ${current_price:,.2f}</div>
+              <div class="timeframe">Timeframe: 10 SEC &nbsp;·&nbsp; {price_label}</div>
 
               <!-- CIRCLE mit ID für JS -->
               <div class="circle-wrap">
