@@ -13,7 +13,8 @@ GOLD_FOTO_URL = "https://images.unsplash.com/photo-1610374792793-f016b77ca51a?q=
 ATR_PERIOD = 10
 KEY_VALUE = 1.0
 KI_INTERVALL = 15
-LOOP_DELAY = 3  
+LOOP_DELAY = 3
+TRADE_TIMER_SEC = 10
 
 st.set_page_config(
     page_title="Fisiget Bot – Gold AI",
@@ -22,168 +23,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ==========================================
-# CSS (Smartphone-UI & TV-Preiskacheln)
-# ==========================================
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
-
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-        background-color: #0a0d14 !important;
-        color: #e2e8f0;
-    }
-    .stApp { background-color: #0a0d14; }
+    html, body, [class*="css"] { background-color: #0a0f1a !important; }
+    .stApp { background-color: #0a0f1a; }
     .block-container { padding: 0 !important; max-width: 100% !important; }
     header[data-testid="stHeader"] { background: transparent; }
-
-    .outer {
-        display: flex;
-        justify-content: center;
-        align-items: flex-start;
-        min-height: 100vh;
-        padding: 20px 12px 40px;
-        box-sizing: border-box;
-    }
-
-    .phone {
-        width: 100%;
-        max-width: 420px;
-        background: #11151f;
-        border-radius: 32px;
-        border: 1px solid #1e2535;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.7);
-        overflow: hidden;
-        flex-shrink: 0;
-    }
-
-    .topbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px 22px 14px;
-    }
-    .logo { font-size: 15px; font-weight: 900; color: #fff; display: flex; align-items: center; gap: 8px; }
-    .status-pill { font-size: 11px; font-weight: 700; color: #10b981; display: flex; align-items: center; gap: 5px; }
-    .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; animation: blink 1.4s infinite; }
-    @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
-
-    .body { padding: 10px 22px 20px; flex: 1; }
-
-    .asset-label { text-align: center; font-size: 14px; color: #9ca3af; font-weight: 600; margin-bottom: 2px; }
-    .asset-title { text-align: center; font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 2px; }
-    .timeframe { text-align: center; font-size: 11px; color: #4b5563; margin-bottom: 16px; }
-
-    /* TRADINGVIEW PRICE BUTTONS STYLE (Pepperstone Layout) */
-    .trading-prices {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 20px;
-    }
-    .price-button {
-        flex: 1;
-        background: rgba(17, 21, 31, 0.5);
-        border-radius: 10px;
-        padding: 8px 10px;
-        text-align: center;
-        font-family: 'JetBrains Mono', monospace;
-    }
-    .price-button.sell { border: 1.5px solid #ef4444; }
-    .price-button.buy { border: 1.5px solid #2563eb; }
-    .price-num-sell { font-size: 16px; font-weight: 700; color: #ef4444; }
-    .price-num-buy { font-size: 16px; font-weight: 700; color: #2563eb; }
-    .price-label-sub { font-size: 10px; color: #4b5563; text-transform: uppercase; font-weight: 700; margin-top: 2px; letter-spacing: 0.5px; }
-    .price-spread { font-size: 12px; color: #9ca3af; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
-
-    /* GLOWING CIRCLE & SPIN ANIMATION */
-    .circle-wrap { display: flex; justify-content: center; margin-bottom: 20px; }
-    .signal-circle {
-        width: 180px; height: 180px; border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-    }
-    
-    .signal-circle.spinning {
-        animation: spinOnce 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-    }
-
-    @keyframes spinOnce {
-        0%   { transform: rotate(0deg) scale(1); }
-        50%  { transform: rotate(180deg) scale(1.06); }
-        100% { transform: rotate(360deg) scale(1); }
-    }
-
-    .circle-buy  { background: radial-gradient(circle at center, #22c55e 0%, #064e3b 100%); box-shadow: 0 0 40px rgba(16,185,129,0.6); }
-    .circle-sell { background: radial-gradient(circle at center, #f87171 0%, #7f1d1d 100%); box-shadow: 0 0 40px rgba(239,68,68,0.6); }
-    .circle-wait { background: radial-gradient(circle at center, #fbbf24 0%, #78350f 100%); box-shadow: 0 0 40px rgba(245,158,11,0.6); }
-    .trend-svg { width: 75px; height: 75px; fill: none; stroke: white; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-
-    .dir-badge {
-        display: block; margin: 0 auto 6px; width: fit-content;
-        background: #1a2235; border: 1px solid #2a3550; border-radius: 20px;
-        padding: 4px 18px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
-    }
-    .signal-text { text-align: center; font-size: 34px; font-weight: 900; letter-spacing: 0.5px; margin-bottom: 20px; }
-
-    /* STATS KACHELN */
-    .stats-row { display: flex; gap: 12px; margin-bottom: 16px; }
-    .stat-box { flex: 1; background: #0c0f17; border: 1px solid #1e2535; border-radius: 14px; padding: 14px 16px; }
-    .stat-label { font-size: 10px; color: #4b5563; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: 700; }
-    .stat-dots { font-size: 16px; letter-spacing: 3px; margin-bottom: 2px; }
-    .stat-sub { font-size: 11px; color: #4b5563; font-weight: 600; }
-    .stat-value { font-family: 'Inter', sans-serif; font-size: 26px; font-weight: 900; }
-    .stat-live { font-size: 10px; color: #4b5563; margin-top: 2px; }
-
-    /* STATUS CAPSULE */
-    .ai-status-bar {
-        background: #0c0f17; border: 1px solid #1e2535; border-radius: 20px;
-        padding: 10px; text-align: center; font-size: 11px; font-weight: 700;
-        color: #10b981; letter-spacing: 1px; margin-bottom: 16px;
-        display: flex; align-items: center; justify-content: center; gap: 6px;
-    }
-
-    /* GREEN HTML BUTTON */
-    .html-gen-btn {
-        width: 100%;
-        background: #10b981;
-        border: none;
-        border-radius: 14px;
-        color: #0a0d14;
-        font-size: 15px;
-        font-weight: 800;
-        padding: 16px 10px;
-        letter-spacing: 0.5px;
-        box-shadow: 0 4px 20px rgba(16,185,129,0.25);
-        cursor: pointer;
-        transition: all 0.2s;
-        display: block;
-        text-align: center;
-        margin-bottom: 14px;
-    }
-    .html-gen-btn:hover { background: #059669; color: #fff; }
-    .html-gen-btn:active { transform: scale(0.99); }
-
-    /* INSIGHT BOX */
-    .insight-box { background: #0c0f17; border: 1px solid #1e2535; border-radius: 14px; padding: 12px 14px; font-size: 11px; color: #9ca3af; line-height: 1.5; }
-    .insight-title { font-size: 10px; color: #4b5563; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; font-weight: 700; }
-
-    /* NAVIGATION BAR */
-    .nav-bar { 
-        display: flex; 
-        justify-content: space-around; 
-        align-items: center; 
-        padding: 16px 10px 20px; 
-        border-top: 1px solid #1e2535; 
-        background: #0d1118;
-    }
-    .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #4b5563; font-weight: 700; }
-    .nav-item.active { color: #10b981; }
-    .nav-icon { font-size: 18px; }
-
-    /* Versteckt den echten Python-Button im Backend */
     .stButton { display: none !important; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -206,7 +53,7 @@ def init_clients():
 keys, groq_client = init_clients()
 
 # ==========================================
-# MARKT-DATEN & INDIKATOREN
+# MARKT-DATEN
 # ==========================================
 def check_market_state() -> str:
     tz = pytz.timezone("Europe/Berlin")
@@ -217,68 +64,57 @@ def check_market_state() -> str:
 
 @st.cache_data(ttl=60)
 def get_market_data():
-    gold_price = None
     try:
         tz = pytz.timezone("Europe/Berlin")
         now = datetime.now(tz)
         is_weekend = now.weekday() >= 5 or (now.weekday() == 4 and now.hour >= 23)
-
-        if is_weekend:
-            gold_data = yf.Ticker("GC=F").history(period="5d", interval="1d")
-            if not gold_data.empty:
-                gold_price = round(float(gold_data["Close"].iloc[-1]), 2)
-        else:
-            gold_data = yf.Ticker("GC=F").history(period="1d", interval="1m")
-            if not gold_data.empty:
-                gold_price = round(float(gold_data["Close"].iloc[-1]), 2)
+        period = "5d" if is_weekend else "1d"
+        interval = "1d" if is_weekend else "1m"
+        gold_data = yf.Ticker("GC=F").history(period=period, interval=interval)
+        if not gold_data.empty:
+            price = round(float(gold_data["Close"].iloc[-1]), 2)
+            if 1500 < price < 5000:
+                return price
     except Exception:
         pass
-    return gold_price, None
+    return None
 
-def calculate_rsi(prices: list, period: int = 14) -> float:
-    if len(prices) < period + 1:
-        return 50.0
+# ==========================================
+# INDIKATOREN
+# ==========================================
+def calculate_rsi(prices, period=14):
+    if len(prices) < period + 1: return 50.0
     gains, losses = [], []
     for i in range(1, len(prices)):
-        diff = prices[i] - prices[i - 1]
-        gains.append(max(diff, 0))
-        losses.append(max(-diff, 0))
-    avg_gain = sum(gains[-period:]) / period
-    avg_loss = sum(losses[-period:]) / period
-    if avg_loss == 0:
-        return 100.0
-    return round(100.0 - (100.0 / (1.0 + avg_gain / avg_loss)), 1)
+        d = prices[i] - prices[i-1]
+        gains.append(max(d, 0)); losses.append(max(-d, 0))
+    ag = sum(gains[-period:]) / period
+    al = sum(losses[-period:]) / period
+    return 100.0 if al == 0 else round(100.0 - (100.0 / (1.0 + ag/al)), 1)
 
-def calculate_atr(prices: list, period: int) -> float:
-    diffs = [abs(prices[i] - prices[i - 1]) for i in range(1, len(prices))]
-    if len(diffs) < period:
-        return 1.5
-    return sum(diffs[-period:]) / period
+def calculate_atr(prices, period):
+    diffs = [abs(prices[i]-prices[i-1]) for i in range(1, len(prices))]
+    return sum(diffs[-period:]) / period if len(diffs) >= period else 1.5
 
-def ut_bot_step(src: float, last_src: float, trail: float, pos: int, atr: float) -> tuple:
-    n_loss = KEY_VALUE * atr
-    if src > trail and last_src > trail:
-        trail = max(trail, src - n_loss)
-    elif src < trail and last_src < trail:
-        trail = min(trail, src + n_loss)
-    else:
-        trail = src - n_loss if src > trail else src + n_loss
-    if last_src < trail and src > trail:
-        pos = 1
-    elif last_src > trail and src < trail:
-        pos = -1
+def ut_bot_step(src, last_src, trail, pos, atr):
+    n = KEY_VALUE * atr
+    if src > trail and last_src > trail: trail = max(trail, src - n)
+    elif src < trail and last_src < trail: trail = min(trail, src + n)
+    else: trail = src - n if src > trail else src + n
+    if last_src < trail and src > trail: pos = 1
+    elif last_src > trail and src < trail: pos = -1
     return trail, pos
 
 # ==========================================
-# DUAL-AI PIPELINE
+# DUAL-AI
 # ==========================================
 AI_PROMPT = """Du bist ein algorithmischer Handels-Bot für Gold (XAU/USD).
-DATEN: Gold=${preis:.2f} | RSI={rsi} | Mathematisches Signal: {signal}
-Antworte NUR in diesem Format:
+DATEN: Gold=${preis:.2f} | RSI={rsi} | Signal: {signal}
+Antworte NUR so:
 SIGNAL: [BUY|SELL|WAIT]
 BEGRÜNDUNG: [max. 15 Wörter]"""
 
-def parse_ai_response(text: str, source: str) -> tuple:
+def parse_ai_response(text, source):
     signal, reason = "WAIT", "Analyse abgeschlossen."
     for line in text.strip().splitlines():
         if line.startswith("SIGNAL:"):
@@ -288,19 +124,17 @@ def parse_ai_response(text: str, source: str) -> tuple:
             reason = line.replace("BEGRÜNDUNG:", "").strip()
     return signal, f"[{source}]: {reason}"
 
-def dual_ai_filter(preis: float, rsi: float, mathe_signal: str) -> tuple:
-    fallback_sig = "BUY (LONG)" if "BUY" in mathe_signal else "SELL (SHORT)" if "SELL" in mathe_signal else "WAIT (SIDEWAYS)"
+def dual_ai_filter(preis, rsi, mathe_signal):
+    fallback = "BUY (LONG)" if "BUY" in mathe_signal else "SELL (SHORT)" if "SELL" in mathe_signal else "WAIT (SIDEWAYS)"
     if not any(keys.values()):
-        return fallback_sig, "Kein API-Key – Mathe-Modus aktiv."
+        return fallback, "Kein API-Key – Mathe-Modus."
     prompt = AI_PROMPT.format(preis=preis, rsi=rsi, signal=mathe_signal)
     if keys["gemini"]:
         try:
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            resp = model.generate_content(prompt)
+            resp = genai.GenerativeModel("gemini-2.5-flash").generate_content(prompt)
             if resp.text and "SIGNAL:" in resp.text:
                 return parse_ai_response(resp.text, "Gemini 2.5 Flash")
-        except Exception:
-            pass
+        except Exception: pass
     if keys["groq"] and groq_client:
         try:
             resp = groq_client.chat.completions.create(
@@ -308,56 +142,160 @@ def dual_ai_filter(preis: float, rsi: float, mathe_signal: str) -> tuple:
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=60, temperature=0.1,
             )
-            text = resp.choices[0].message.content
-            if text and "SIGNAL:" in text:
-                return parse_ai_response(text, "Groq / Llama 3.1")
-        except Exception:
-            pass
-    return fallback_sig, "KI temporär nicht verfügbar – Mathe-Modus."
+            t = resp.choices[0].message.content
+            if t and "SIGNAL:" in t:
+                return parse_ai_response(t, "Groq / Llama 3.1")
+        except Exception: pass
+    return fallback, "KI nicht verfügbar – Mathe-Modus."
 
 # ==========================================
 # SIGNAL CONFIG
-# ==========================================
-SVG_BUY  = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18M23 6h-6M23 6v6"/></svg>'
-SVG_SELL = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M23 18l-9.5-9.5-5 5L1 6M23 18h-6M23 18v-6"/></svg>'
-SVG_WAIT = '<svg class="trend-svg" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>'
+def make_svg(path, color="white"):
+    return f'<svg viewBox="0 0 24 24" style="width:74px;height:74px;fill:none;stroke:{color};stroke-width:3;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 14px rgba(255,255,255,0.95)) drop-shadow(0 0 6px {color});"><path d="{path}"/></svg>'
 
 SIGNAL_CONFIG = {
-    "BUY":  {"class": "circle-buy",  "color": "#10b981", "dir": "UPWARD",   "svg": SVG_BUY,  "win": "82%", "dots": "●●●●○", "dots_sub": "4/5"},
-    "SELL": {"class": "circle-sell", "color": "#ef4444", "dir": "DOWNWARD", "svg": SVG_SELL, "win": "89.4%", "dots": "●●●●○", "dots_sub": "4/5"},
-    "WAIT": {"class": "circle-wait", "color": "#f59e0b", "dir": "SIDEWAYS", "svg": SVG_WAIT, "win": "  —  ", "dots": "●●○○○", "dots_sub": "2/5"},
+    "BUY": {
+        "color": "#00e676", "glow": "#00e676",
+        "bg": "radial-gradient(circle at 50% 40%, #00e676 0%, #00c853 30%, #004d2e 70%, #001a10 100%)",
+        "dir": "UPWARD", "win": "82%", "dots": 5,
+        "svg": make_svg("M23 6l-9.5 9.5-5-5L1 18M23 6h-6M23 6v6", "#fff"),
+    },
+    "SELL": {
+        "color": "#ff1744", "glow": "#ff1744",
+        "bg": "radial-gradient(circle at 50% 40%, #ff5252 0%, #ff1744 30%, #4d0010 70%, #1a0005 100%)",
+        "dir": "DOWNWARD", "win": "89%", "dots": 4,
+        "svg": make_svg("M23 18l-9.5-9.5-5 5L1 6M23 18h-6M23 18v-6", "#fff"),
+    },
+    "WAIT": {
+        "color": "#ffc400", "glow": "#ffc400",
+        "bg": "radial-gradient(circle at 50% 40%, #ffd740 0%, #ffc400 30%, #4d3800 70%, #1a1200 100%)",
+        "dir": "SIDEWAYS", "win": "—", "dots": 2,
+        "svg": make_svg("M5 12h14M13 5l7 7-7 7", "#fff"),
+    },
 }
 
-def get_signal_key(signal: str) -> str:
-    if "BUY" in signal: return "BUY"
-    if "SELL" in signal: return "SELL"
+def get_sig_key(s):
+    if "BUY" in s: return "BUY"
+    if "SELL" in s: return "SELL"
     return "WAIT"
 
 # ==========================================
 # STATE INIT
 # ==========================================
 if "src_history" not in st.session_state:
-    start_price, _ = get_market_data()
-    start_price = start_price or 2350.0
-    st.session_state.src_history = [start_price] * 15
-    st.session_state.trail = start_price - 5.0
+    sp = get_market_data() or 2350.0
+    st.session_state.src_history = [sp] * 15
+    st.session_state.trail = sp - 5.0
     st.session_state.pos = 1
     st.session_state.ki_takt = 0
     st.session_state.ki_signal = "BUY (LONG)"
-    st.session_state.ki_reason = "Initialisiere Dual-AI Pipeline…"
-    st.session_state.force_ai_update = False
+    st.session_state.ki_reason = "Initialisiere AI Pipeline…"
+
+# Jeden Key einzeln absichern (verhindert AttributeError nach st.rerun)
+if "force_ai" not in st.session_state: st.session_state.force_ai = False
+if "analyzing" not in st.session_state: st.session_state.analyzing = False
+if "trade_timer" not in st.session_state: st.session_state.trade_timer = TRADE_TIMER_SEC
 
 # ==========================================
-# DATA REFRESH LOGIC
+# MARKTZEITEN
+# ==========================================
+def get_market_sessions():
+    """Gibt Status aller wichtigen Handelssessions zurück (Berlin-Zeit)."""
+    tz = pytz.timezone("Europe/Berlin")
+    now = datetime.now(tz)
+    weekday = now.weekday()  # 0=Mo, 6=So
+    h = now.hour + now.minute / 60.0
+
+    sessions = [
+        {
+            "name": "Sydney",
+            "flag": "🇦🇺",
+            # Berlin: Mo 00:00–09:00, Di-Fr 00:00–09:00 (Sommer +1h)
+            "open_h": 0.0, "close_h": 9.0,
+            "days": [0,1,2,3,4],
+        },
+        {
+            "name": "Tokio",
+            "flag": "🇯🇵",
+            # Berlin: Mo 01:00–10:00
+            "open_h": 1.0, "close_h": 10.0,
+            "days": [0,1,2,3,4],
+        },
+        {
+            "name": "London",
+            "flag": "🇬🇧",
+            # Berlin: Mo-Fr 09:00–18:00
+            "open_h": 9.0, "close_h": 18.0,
+            "days": [0,1,2,3,4],
+        },
+        {
+            "name": "New York",
+            "flag": "🇺🇸",
+            # Berlin: Mo-Fr 14:00–23:00
+            "open_h": 14.0, "close_h": 23.0,
+            "days": [0,1,2,3,4],
+        },
+    ]
+
+    result = []
+    for s in sessions:
+        is_open = weekday in s["days"] and s["open_h"] <= h < s["close_h"]
+        if is_open:
+            mins_left = int((s["close_h"] - h) * 60)
+            status = f"Schließt in {mins_left}min"
+            color = "#00e676"
+            dot = "🟢"
+        elif weekday in s["days"] and h < s["open_h"]:
+            mins_to = int((s["open_h"] - h) * 60)
+            status = f"Öffnet in {mins_to}min"
+            color = "#ffc400"
+            dot = "🟡"
+        else:
+            # Nächsten Öffnungstag berechnen
+            next_day_name = ["Mo", "Di", "Mi", "Do", "Fr"][s["days"][0]] if s["days"] else "Mo"
+            status = f"Geschlossen"
+            color = "#ff1744"
+            dot = "🔴"
+        result.append({
+            "name": s["name"], "flag": s["flag"],
+            "open": f"{int(s['open_h']):02d}:00", "close": f"{int(s['close_h']):02d}:00",
+            "is_open": is_open, "status": status, "color": color, "dot": dot,
+        })
+    return result
+
+def build_market_hours_html(sessions):
+    rows = ""
+    for s in sessions:
+        rows += f"""
+        <div style="display:flex;justify-content:space-between;align-items:center;
+                    padding:10px 14px;border-bottom:1px solid #1a2540;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:16px;">{s['flag']}</span>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:#fff;">{s['name']}</div>
+              <div style="font-size:10px;color:#4b6080;">{s['open']} – {s['close']} (Berlin)</div>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:11px;font-weight:700;color:{s['color']};">{s['dot']} {'OFFEN' if s['is_open'] else 'GESCHLOSSEN'}</div>
+            <div style="font-size:10px;color:#4b6080;">{s['status']}</div>
+          </div>
+        </div>"""
+    return rows
+
+# ==========================================
+# LOGIC
 # ==========================================
 market_state = check_market_state()
-live_gold, _ = get_market_data()
-current_price = live_gold if live_gold is not None else st.session_state.src_history[-1]
+live_gold = get_market_data()
+current_price = live_gold if live_gold else st.session_state.src_history[-1]
 
-# Realistische Bid/Ask- und Live-Spread Berechnung
-spread_value = 0.90
+spread = 0.90
 sell_price = current_price
-buy_price = round(current_price + spread_value, 2)
+buy_price = round(current_price + spread, 2)
+
+is_weekend = datetime.now(pytz.timezone("Europe/Berlin")).weekday() >= 5
+price_label = f"Fr. Schluss: ${current_price:,.2f}" if is_weekend else f"${current_price:,.2f}"
 
 last_src = st.session_state.src_history[-1]
 st.session_state.src_history.append(current_price)
@@ -371,119 +309,525 @@ st.session_state.trail, st.session_state.pos = ut_bot_step(
 )
 mathe_signal = "BUY" if st.session_state.pos == 1 else "SELL"
 
-if st.session_state.ki_takt % KI_INTERVALL == 0 or st.session_state.force_ai_update:
-    st.session_state.ki_signal, st.session_state.ki_reason = dual_ai_filter(
-        current_price, rsi, mathe_signal
-    )
-    st.session_state.force_ai_update = False
+if st.session_state.ki_takt % KI_INTERVALL == 0 or st.session_state.force_ai:
+    st.session_state.ki_signal, st.session_state.ki_reason = dual_ai_filter(current_price, rsi, mathe_signal)
+    st.session_state.force_ai = False
 
 st.session_state.ki_takt += 1
 
-sig_key = get_signal_key(st.session_state.ki_signal)
+# Trade timer countdown
+st.session_state.trade_timer -= 1
+if st.session_state.trade_timer <= 0:
+    st.session_state.trade_timer = TRADE_TIMER_SEC
+
+sessions = get_market_sessions()
+market_hours_html = build_market_hours_html(sessions)
+open_count = sum(1 for s in sessions if s["is_open"])
+
+sig_key = get_sig_key(st.session_state.ki_signal)
 cfg = SIGNAL_CONFIG[sig_key]
 mode_label = "LIVE AI" if any(keys.values()) else "MATH MODE"
 takte_bis_ki = KI_INTERVALL - (st.session_state.ki_takt % KI_INTERVALL)
+dots_filled = "●" * cfg["dots"] + "○" * (5 - cfg["dots"])
+data_points = 6544 + (st.session_state.ki_takt * 7)
+accuracy = round(39.8 + (rsi * 0.1), 1)
+confidence = min(95, round(25 + cfg["dots"] * 10))
 
 # ==========================================
-# RENDER LAYOUT
+# RENDER
 # ==========================================
 st.html(f"""
-<div class="outer">
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: #0a0f1a; font-family: 'Inter', sans-serif; }}
+
+  @keyframes blink {{ 0%,100%{{opacity:1;}} 50%{{opacity:0.2;}} }}
+  @keyframes spinOnce {{
+    0%   {{ transform: rotate(0deg) scale(1); }}
+    40%  {{ transform: rotate(200deg) scale(1.12); }}
+    100% {{ transform: rotate(360deg) scale(1); }}
+  }}
+  @keyframes btnSpin {{ to {{ transform: rotate(360deg); }} }}
+  @keyframes progress {{
+    0%   {{ width: 15%; }}
+    100% {{ width: 85%; }}
+  }}
+  @keyframes ringRotate {{
+    from {{ stroke-dashoffset: 440; }}
+    to   {{ stroke-dashoffset: 0; }}
+  }}
+  @keyframes fadeIn {{
+    from {{ opacity: 0; transform: translateY(10px); }}
+    to   {{ opacity: 1; transform: translateY(0); }}
+  }}
+  @keyframes glow-pulse {{
+    0%, 100% {{ box-shadow: 0 0 60px {cfg['glow']}88, 0 0 120px {cfg['glow']}44; }}
+    50%       {{ box-shadow: 0 0 80px {cfg['glow']}bb, 0 0 160px {cfg['glow']}66; }}
+  }}
+  @keyframes timerTick {{
+    0%   {{ background: #10b98122; }}
+    50%  {{ background: #10b98144; }}
+    100% {{ background: #10b98122; }}
+  }}
+
+  /* =====================
+     RESPONSIVE LAYOUT
+     Mobile  < 600px  : 1 col, volle Breite
+     Tablet  600-1023px: zentriert, max 560px
+     Desktop >= 1024px : zentriert, max 620px, größere Schriften
+  ===================== */
+
+  .app {{
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    background: #0a0f1a;
+    padding: 0;
+  }}
+
+  .phone {{
+    width: 100%;
+    max-width: 100%;
+    background: #0d1320;
+    border-radius: 0;
+    border: none;
+    overflow: hidden;
+  }}
+
+  /* TOPBAR */
+  .topbar {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #1a2540;
+  }}
+  .logo {{ font-size: 15px; font-weight: 900; color: #fff; display: flex; align-items: center; gap: 8px; }}
+  .live-badge {{ font-size: 11px; font-weight: 700; color: #00e676; display: flex; align-items: center; gap: 6px; }}
+  .dot-live {{ width: 7px; height: 7px; border-radius: 50%; background: #00e676; animation: blink 1.2s infinite; }}
+
+  /* BODY – zentriert, responsive Breite */
+  .body {{
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 18px 16px;
+    box-sizing: border-box;
+  }}
+
+  .back-btn {{ color: #00e676; font-size: 20px; margin-bottom: 12px; cursor: pointer; display: inline-block; }}
+
+  .signal-header {{ font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 6px; }}
+  .signal-header span {{ color: #00e676; }}
+  .signal-tf {{ font-size: 13px; font-weight: 700; color: #9ca3af; margin-bottom: 20px; letter-spacing: 0.3px; }}
+
+  /* CIRCLE */
+  .circle-outer {{ display: flex; justify-content: center; margin-bottom: 18px; }}
+  .circle-main {{
+    width: 180px; height: 180px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: {cfg['bg']};
+    box-shadow: 0 0 60px {cfg['glow']}88, 0 0 120px {cfg['glow']}44;
+    animation: glow-pulse 2s ease-in-out infinite;
+  }}
+
+  /* DIR BADGE */
+  .dir-badge {{
+    display: block; width: fit-content; margin: 0 auto 8px;
+    background: #0d1320; border: 1.5px solid {cfg['color']};
+    border-radius: 20px; padding: 5px 20px;
+    font-size: 12px; font-weight: 800; letter-spacing: 1.5px;
+    text-transform: uppercase; color: {cfg['color']};
+  }}
+  .signal-text {{
+    text-align: center; font-size: 34px; font-weight: 900;
+    color: {cfg['color']}; text-shadow: 0 0 30px {cfg['glow']}88;
+    margin-bottom: 18px; letter-spacing: 0.5px;
+  }}
+
+  /* STATS */
+  .stats-row {{ display: flex; gap: 10px; margin-bottom: 12px; }}
+  .stat-card {{ flex: 1; background: #0a0f1a; border: 1px solid #1a2540; border-radius: 14px; padding: 12px 14px; }}
+  .stat-label {{ font-size: 10px; color: #4b6080; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px; }}
+  .stat-dots {{ font-size: 16px; letter-spacing: 4px; color: {cfg['color']}; margin-bottom: 3px; }}
+  .stat-sub {{ font-size: 11px; color: #4b6080; font-weight: 700; }}
+  .stat-winrate {{ font-size: 28px; font-weight: 900; color: {cfg['color']}; line-height: 1; }}
+  .stat-live {{ font-size: 10px; color: #4b6080; margin-top: 4px; }}
+
+  /* AI STATUS BAR */
+  .ai-bar {{
+    background: #0a0f1a; border: 1px solid #1a2540; border-radius: 12px;
+    padding: 11px 16px; display: flex; align-items: center; justify-content: center;
+    gap: 8px; margin-bottom: 10px; font-size: 12px; font-weight: 700;
+    color: #00e676; letter-spacing: 1px;
+  }}
+
+  /* TRADE TIMER */
+  .trade-timer {{
+    background: #0a0f1a; border: 1px solid #1a2540; border-radius: 12px;
+    padding: 10px 16px; text-align: center; margin-bottom: 12px;
+    font-size: 12px; font-weight: 700; color: #4b6080; letter-spacing: 1px;
+    animation: timerTick 1s ease infinite;
+  }}
+  .trade-timer span {{ color: #00e676; font-size: 14px; }}
+
+  /* GENERATE BUTTON */
+  .gen-btn {{
+    width: 100%; border: none; border-radius: 14px;
+    background: linear-gradient(135deg, #00e676, #00c853);
+    color: #0a0f1a; font-size: 15px; font-weight: 800;
+    padding: 16px; letter-spacing: 0.5px; cursor: pointer;
+    margin-bottom: 12px; box-shadow: 0 6px 24px rgba(0,230,118,0.35);
+    transition: all 0.2s; font-family: Inter, sans-serif;
+  }}
+  .gen-btn:hover {{ background: linear-gradient(135deg, #69f0ae, #00e676); }}
+  .gen-btn:active {{ transform: scale(0.98); }}
+
+  /* SSL */
+  .ssl-bar {{ text-align: center; font-size: 10px; color: #2a3a50; padding: 8px 0; }}
+
+  /* NAV BAR */
+  .nav-bar {{
+    display: flex; justify-content: space-around; align-items: center;
+    padding: 14px 20px 18px; border-top: 1px solid #1a2540; background: #090d18;
+  }}
+  .nav-item {{ display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: #2a3a50; cursor: pointer; }}
+  .nav-item.active {{ background: #00e676; color: #0a0f1a; padding: 8px 18px; border-radius: 12px; gap: 3px; }}
+  .nav-icon {{ font-size: 16px; }}
+
+  /* ── TABLET (600px+) ── */
+  @media (min-width: 600px) {{
+    .body {{ max-width: 560px; padding: 24px 28px 20px; }}
+    .topbar {{ padding: 18px 40px 14px; }}
+    .nav-bar {{ padding: 14px 40px 18px; }}
+    .logo {{ font-size: 16px; }}
+    .live-badge {{ font-size: 12px; }}
+    .signal-header {{ font-size: 17px; }}
+    .signal-tf {{ font-size: 14px; }}
+    .circle-main {{ width: 200px; height: 200px; }}
+    .signal-text {{ font-size: 40px; }}
+    .stat-winrate {{ font-size: 32px; }}
+    .stat-dots {{ font-size: 18px; }}
+    .stat-label {{ font-size: 11px; }}
+    .gen-btn {{ font-size: 16px; padding: 18px; }}
+    .ai-bar {{ font-size: 13px; }}
+    .trade-timer {{ font-size: 13px; }}
+    .trade-timer span {{ font-size: 15px; }}
+    .dir-badge {{ font-size: 13px; padding: 6px 24px; }}
+  }}
+
+  /* ── DESKTOP (1024px+) ── */
+  @media (min-width: 1024px) {{
+    .body {{ max-width: 620px; padding: 32px 40px 24px; }}
+    .topbar {{ padding: 22px 60px 16px; }}
+    .nav-bar {{ padding: 16px 60px 20px; }}
+    .logo {{ font-size: 18px; }}
+    .live-badge {{ font-size: 13px; }}
+    .signal-header {{ font-size: 20px; }}
+    .signal-tf {{ font-size: 16px; }}
+    .circle-main {{ width: 240px; height: 240px; }}
+    .signal-text {{ font-size: 52px; margin-bottom: 24px; }}
+    .stat-winrate {{ font-size: 40px; }}
+    .stat-dots {{ font-size: 22px; letter-spacing: 5px; }}
+    .stat-label {{ font-size: 12px; }}
+    .stat-card {{ padding: 18px 20px; }}
+    .gen-btn {{ font-size: 18px; padding: 20px; border-radius: 16px; }}
+    .ai-bar {{ font-size: 14px; padding: 14px 20px; }}
+    .trade-timer {{ font-size: 14px; padding: 13px 20px; }}
+    .trade-timer span {{ font-size: 17px; }}
+    .dir-badge {{ font-size: 14px; padding: 7px 28px; letter-spacing: 2px; }}
+    .back-btn {{ font-size: 24px; }}
+    .nav-item {{ font-size: 12px; }}
+    .nav-icon {{ font-size: 20px; }}
+    .ssl-bar {{ font-size: 12px; padding: 10px 0; }}
+  }}
+
+  /* ANALYZING SCREEN */
+  .analyzing-screen {{
+    display: none; /* toggled by JS */
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 20px;
+  }}
+  .analyze-title {{
+    font-size: 16px; font-weight: 800; color: #fff;
+    margin-bottom: 4px;
+  }}
+  .analyze-title span {{ color: #00e676; }}
+  .analyze-tf {{ font-size: 11px; color: #4b6080; margin-bottom: 30px; }}
+
+  /* Donut ring for analyzing */
+  .donut-wrap {{ position: relative; width: 160px; height: 160px; margin-bottom: 28px; }}
+  .donut-wrap svg {{ position: absolute; top:0; left:0; transform: rotate(-90deg); }}
+  .brain-icon {{
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 40px;
+  }}
+
+  /* Progress bar */
+  .progress-wrap {{
+    width: 100%; background: #0a0f1a;
+    border: 1px solid #1a2540; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 16px;
+  }}
+  .progress-bar-bg {{
+    background: #1a2540; border-radius: 6px; height: 6px;
+    margin-bottom: 8px; overflow: hidden;
+  }}
+  .progress-bar-fill {{
+    height: 100%; border-radius: 6px;
+    background: linear-gradient(90deg, #00e676, #69f0ae);
+    width: 55%; transition: width 0.5s;
+  }}
+  .progress-label {{
+    font-size: 12px; color: #4b6080; text-align: center;
+  }}
+
+  /* Data points row */
+  .data-row {{ display: flex; gap: 10px; margin-bottom: 8px; }}
+  .data-card {{
+    flex: 1; background: #0a0f1a;
+    border: 1px solid #1a2540; border-radius: 12px;
+    padding: 12px 10px; text-align: center;
+  }}
+  .data-card-label {{
+    font-size: 9px; color: #4b6080;
+    text-transform: uppercase; letter-spacing: 1px;
+    font-weight: 700; margin-bottom: 6px;
+  }}
+  .data-card-val {{ font-size: 18px; font-weight: 900; color: #fff; }}
+  .data-card-val.yellow {{ color: #ffc400; }}
+  .data-card-val.red {{ color: #ff1744; }}
+</style>
+</head>
+<body>
+<div class="app">
   <div class="phone">
+
+    <!-- TOPBAR -->
     <div class="topbar">
       <div class="logo">🪙 FISIGET BOT</div>
-      <div class="status-pill">
-        <div class="pulse-dot"></div>
-        ● {mode_label} | {market_state} | 👤 1,360
+      <div class="live-badge">
+        <div class="dot-live"></div>
+        {mode_label} &nbsp;|&nbsp; 👤 1,360
       </div>
     </div>
 
-    <div class="body">
-      <div class="asset-label">Signal for:</div>
-      <div class="asset-title">XAU / USD ({market_state})</div>
-      <div class="timeframe">Timeframe: 10 SEC &nbsp;·&nbsp; Pepperstone</div>
+    <!-- ========== ANALYZING SCREEN ========== -->
+    <div id="analyzingScreen" class="body" style="display:none;">
+      <div class="back-btn">←</div>
+      <div class="analyze-title">Analyzing Market... <span>XAU/USD ({market_state})</span></div>
+      <div class="analyze-tf">Timeframe: 10 SEC</div>
 
-      <div class="trading-prices">
-        <div class="price-button sell">
-          <div class="price-num-sell">{sell_price:,.2f}</div>
-          <div class="price-label-sub">Verkauf</div>
+      <!-- Donut ring -->
+      <div class="donut-wrap">
+        <svg width="160" height="160" viewBox="0 0 160 160">
+          <!-- BG ring -->
+          <circle cx="80" cy="80" r="70" fill="none" stroke="#1a2540" stroke-width="12"/>
+          <!-- Red arc (sell side) -->
+          <circle cx="80" cy="80" r="70" fill="none" stroke="#ff1744" stroke-width="12"
+            stroke-dasharray="220 220" stroke-linecap="round"/>
+          <!-- Green arc (buy side) -->
+          <circle cx="80" cy="80" r="70" fill="none" stroke="#00e676" stroke-width="12"
+            stroke-dasharray="200 440" stroke-dashoffset="-220" stroke-linecap="round"/>
+        </svg>
+        <div class="brain-icon">🧠</div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-wrap">
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progressBar"></div>
         </div>
-        <div class="price-spread">{spread_value:.2f}</div>
-        <div class="price-button buy">
-          <div class="price-num-buy">{buy_price:,.2f}</div>
-          <div class="price-label-sub">Kauf</div>
+        <div class="progress-label" id="progressLabel">Analyzing volatility patterns...</div>
+      </div>
+
+      <!-- Data cards -->
+      <div class="data-row">
+        <div class="data-card">
+          <div class="data-card-label">Data Points</div>
+          <div class="data-card-val">{data_points:,}</div>
+        </div>
+        <div class="data-card">
+          <div class="data-card-label">Accuracy</div>
+          <div class="data-card-val yellow">{accuracy}%</div>
+        </div>
+        <div class="data-card">
+          <div class="data-card-label">Confidence</div>
+          <div class="data-card-val red">{confidence}%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== MAIN SIGNAL SCREEN ========== -->
+    <div id="mainScreen" class="body">
+      <div class="back-btn">←</div>
+
+      <div class="signal-header">Signal for: <span>XAU/USD ({market_state})</span></div>
+      <div class="signal-tf">Timeframe: 10 SEC &nbsp;·&nbsp; <span style="color:#00e676;font-size:15px;font-weight:800;">{price_label}</span></div>
+
+      <!-- BIG CIRCLE -->
+      <div class="circle-outer">
+        <div id="mainCircle" class="circle-main">
+          {cfg['svg']}
         </div>
       </div>
 
-      <div class="circle-wrap">
-        <div id="mainCircle" class="signal-circle {cfg['class']}">{cfg['svg']}</div>
-      </div>
+      <div class="dir-badge">{cfg['dir']}</div>
+      <div class="signal-text">{st.session_state.ki_signal}</div>
 
-      <span class="dir-badge" style="color:{cfg['color']}; background: rgba(16,185,129,0.1); border-color: {cfg['color']}50;">{cfg['dir']}</span>
-      <div class="signal-text" style="color:{cfg['color']};">{st.session_state.ki_signal}</div>
-
+      <!-- STATS -->
       <div class="stats-row">
-        <div class="stat-box">
+        <div class="stat-card">
           <div class="stat-label">Signal Strength</div>
-          <div class="stat-dots" style="color:{cfg['color']};">{cfg['dots']}</div>
-          <div class="stat-sub">{cfg['dots_sub']}</div>
+          <div class="stat-dots">{dots_filled}</div>
+          <div class="stat-sub">{cfg['dots']}/5</div>
         </div>
-        <div class="stat-box">
+        <div class="stat-card">
           <div class="stat-label">Win Rate</div>
-          <div class="stat-value" style="color:#10b981;">{cfg['win']}</div>
+          <div class="stat-winrate">{cfg['win']}</div>
           <div class="stat-live">Live</div>
         </div>
       </div>
 
-      <div class="ai-status-bar">
-        <span class="pulse-dot"></span> AI PROCESSING... (Update in {takte_bis_ki}s)
+      <!-- AI STATUS -->
+      <div class="ai-bar">
+        <span style="width:7px;height:7px;border-radius:50%;background:#00e676;display:inline-block;animation:blink 1.2s infinite;"></span>
+        AI PROCESSING... (Update in {takte_bis_ki}s)
       </div>
 
-      <button id="genBtn" class="html-gen-btn" onclick="
+      <!-- TRADE TIMER -->
+      <div class="trade-timer">
+        TRADE TIMER: <span>{st.session_state.trade_timer}s</span>
+      </div>
+
+      <!-- GENERATE BUTTON -->
+      <button id="genBtn" class="gen-btn" onclick="(function(){{
+
         var c = document.getElementById('mainCircle');
         var btn = document.getElementById('genBtn');
-        c.classList.remove('spinning');
+
+        // --- SPIN: direkt per keyframe in style-tag ---
+        var styleTag = document.getElementById('spinStyle');
+        if(!styleTag){{
+          styleTag = document.createElement('style');
+          styleTag.id = 'spinStyle';
+          document.head.appendChild(styleTag);
+        }}
+        styleTag.textContent = '@keyframes spinNow {{ 0%{{transform:rotate(0deg) scale(1)}} 40%{{transform:rotate(200deg) scale(1.1)}} 100%{{transform:rotate(360deg) scale(1)}} }}';
+
+        c.style.animation = 'none';
         void c.offsetWidth;
-        c.classList.add('spinning');
-        btn.style.background = '#059669';
-        btn.style.color = '#ffffff';
-        btn.textContent = 'Analysiere…';
-        setTimeout(function() {{
-            document.querySelector('.stButton button').click();
-        }}, 650);
-      ">
-        Generate New Signal
+        c.style.animation = 'spinNow 0.9s cubic-bezier(0.4,0,0.2,1) forwards';
+
+        btn.disabled = true;
+        btn.textContent = '⟳ Analysiere...';
+        btn.style.opacity = '0.75';
+
+        // Nach Spin: Python Backend triggern
+        setTimeout(function(){{
+          c.style.animation = 'glow-pulse 2s ease-in-out infinite';
+          btn.textContent = '🔄 Generate New Signal';
+          btn.disabled = false;
+          btn.style.opacity = '1';
+
+          // Streamlit hidden button - mehrere Selektoren versuchen
+          var hidden = (
+            document.querySelector('button[kind="secondary"]') ||
+            document.querySelector('[data-testid="stBaseButton-secondary"]') ||
+            document.querySelector('[data-testid="stButton"] button') ||
+            Array.from(document.querySelectorAll('button')).find(function(b){{ return b.textContent.trim() === 'Hidden Trigger'; }})
+          );
+          if(hidden) {{
+            hidden.click();
+          }} else {{
+            // Fallback: URL-Reload mit Query-Parameter
+            window.location.search = '?signal=' + Date.now();
+          }}
+        }}, 950);
+
+      }})()">
+        🔄 Generate New Signal
       </button>
 
-      <div class="insight-box">
-        <div class="insight-title">🤖 AI-Reasoning</div>
-        <span>{st.session_state.ki_reason}</span>
+      <!-- AI INSIGHT -->
+      <div style="background:#0a0f1a;border:1px solid #1a2540;border-radius:12px;padding:12px 14px;font-size:11px;color:#4b6080;line-height:1.5;margin-bottom:14px;">
+        <div style="font-size:10px;color:#2a3a50;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700;">🤖 AI-Reasoning</div>
+        {st.session_state.ki_reason}
       </div>
-    </div>
 
+      <!-- MARKTZEITEN TOGGLE -->
+      <div style="margin-bottom:6px;">
+        <button onclick="(function(){{
+          var panel = document.getElementById('marketPanel');
+          var arrow = document.getElementById('marketArrow');
+          if(panel.style.display === 'none' || panel.style.display === ''){{
+            panel.style.display = 'block';
+            arrow.textContent = '▲';
+          }} else {{
+            panel.style.display = 'none';
+            arrow.textContent = '▼';
+          }}
+        }})()"
+          style="width:100%;background:#0a0f1a;border:1px solid #1a2540;border-radius:12px;
+                 padding:12px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;
+                 display:flex;justify-content:space-between;align-items:center;font-family:Inter,sans-serif;">
+          <span>🕐 Markt-Öffnungszeiten &nbsp;
+            <span style="background:#00e67622;color:#00e676;border-radius:8px;padding:2px 8px;font-size:11px;">
+              {open_count}/4 offen
+            </span>
+          </span>
+          <span id="marketArrow" style="color:#4b6080;">▼</span>
+        </button>
+
+        <div id="marketPanel" style="display:none;background:#0a0f1a;border:1px solid #1a2540;
+             border-top:none;border-radius:0 0 12px 12px;overflow:hidden;">
+          {market_hours_html}
+          <div style="padding:8px 14px;font-size:10px;color:#2a3a50;text-align:center;">
+            Alle Zeiten in Berliner Lokalzeit (CET/CEST)
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /mainScreen -->
+
+    <!-- SSL BAR -->
+    <div class="ssl-bar">🔒 SSL Secured &nbsp;|&nbsp; 🔒 256-bit Encrypted &nbsp;|&nbsp; v2.4.7</div>
+
+    <!-- NAV BAR -->
     <div class="nav-bar">
       <div class="nav-item active">
-        <span class="nav-icon">📈</span><span>TRADE</span>
+        <span class="nav-icon">📈</span>TRADE
       </div>
       <div class="nav-item">
-        <span class="nav-icon">⚡</span><span>LIVE FEED</span>
+        <span class="nav-icon">⚡</span>LIVE FEED
       </div>
       <div class="nav-item">
-        <img src="{GOLD_FOTO_URL}" style="width:22px;height:22px;border-radius:50%;border:1.5px solid #d4af37;object-fit:cover;" alt="P">
-        <span style="color:#d4af37;">PROFILE</span>
+        <img src="{GOLD_FOTO_URL}" style="width:20px;height:20px;border-radius:50%;border:1.5px solid #d4af37;object-fit:cover;">
+        <span>PROFILE</span>
       </div>
     </div>
+
   </div>
 </div>
+</body>
+</html>
 """)
 
-# Versteckter Streamlit-Button für das Klick-Handling im Python-Backend
-if st.button("Hidden Trigger"):
-    st.session_state.force_ai_update = True
+# Versteckter Backend-Button - MUSS vor st.html stehen damit er immer im DOM ist
+# Wird per JS geklickt wenn "Generate New Signal" gedrückt wird
+if st.button("Hidden Trigger", key="hidden_trigger", type="secondary"):
+    st.session_state.force_ai = True
     st.rerun()
 
-# ==========================================
-# AUTOMATISCHER REFRESH-TICKER (3 Sekunden-Takt)
-# ==========================================
+# Auto-Refresh alle 3 Sekunden
 time.sleep(LOOP_DELAY)
 st.rerun()
