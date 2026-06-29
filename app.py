@@ -23,6 +23,9 @@ SL_DISTANCE_PIPS = 50.0
 TP_DISTANCE_PIPS = 100.0 
 MAGIC_NUMBER = 202606    
 
+# FILTER SETTINGS
+ATR_MIN_PIPS = 0.80      # Kein Signal wenn ATR unter diesem Wert (Seitwärtsmarkt)
+
 st.set_page_config(
     page_title="Fisiget Bot – Gold AI",
     page_icon="🪙",
@@ -86,6 +89,9 @@ if "connection_status" not in st.session_state: st.session_state.connection_stat
 if "last_trade_log" not in st.session_state: st.session_state.last_trade_log = "Warte auf Handelssignale..."
 if "last_rsi" not in st.session_state: st.session_state.last_rsi = 50.0
 if "last_atr" not in st.session_state: st.session_state.last_atr = 1.5
+if "ema200_1h" not in st.session_state: st.session_state.ema200_1h = 0.0
+if "filter_reason" not in st.session_state: st.session_state.filter_reason = ""
+if "last_1h_fetch" not in st.session_state: st.session_state.last_1h_fetch = 0.0
 
 # ==========================================
 # IMPROVED INDIKATOREN
@@ -123,6 +129,85 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     ema_fast = prices[-fast:] if len(prices) >= fast else prices
     ema_slow = prices[-slow:] if len(prices) >= slow else prices
     return sum(ema_fast)/len(ema_fast) - sum(ema_slow)/len(ema_slow), 0.0
+
+# ==========================================
+# FILTER-INDIKATOREN
+# ==========================================
+def calculate_ema(prices, period):
+    """Echter EMA – benötigt für EMA200 (1H-Trend-Filter)"""
+    if len(prices) < period:
+        return prices[-1] if prices else 0.0
+    k = 2.0 / (period + 1)
+    ema = sum(prices[:period]) / period  # SMA als Startwert
+    for p in prices[period:]:
+        ema = p * k + ema * (1 - k)
+    return round(ema, 2)
+
+def get_1h_closes_mt5():
+    """
+    Holt 200 abgeschlossene 1H-Candle-Closes aus MT5 für EMA200.
+    Gibt Liste oder None zurück.
+    """
+    try:
+        rates = mt5.copy_rates_from_pos(BROKER_SYMBOL, mt5.TIMEFRAME_H1, 0, 201)
+        if rates is None or len(rates) < 50:
+            return None
+        return [round(r["close"], 2) for r in rates[:-1]]  # letzte Kerze offen → weglassen
+    except Exception:
+        return None
+
+def check_all_filters(rsi, atr, buy_raw, sell_raw, ema200_1h, current_price):
+    """
+    Wendet alle 4 Filter an. Gibt (buy_ok, sell_ok, blocked_reason) zurück.
+
+    Filter 1: Confluence RSI
+      BUY  nur wenn RSI < 50
+      SELL nur wenn RSI > 50
+
+    Filter 2: ATR-Mindest-Schwelle
+      Kein Signal wenn ATR zu niedrig (Seitwärtsmarkt)
+      Schwelle: ATR_MIN_PIPS (konfigurierbar)
+
+    Filter 3: Trend-Filter EMA200 (1H)
+      Beide Richtungen erlaubt – aber Gegentrend bekommt niedrigere Stärke
+      (kein harter Block laut deiner Wahl)
+
+    Filter 4: Session-Filter
+      Kein Filter – immer traden (laut deiner Wahl)
+    """
+    blocked_reasons = []
+
+    # Filter 1: RSI Confluence
+    rsi_blocks_buy  = buy_raw  and (rsi >= 50)
+    rsi_blocks_sell = sell_raw and (rsi <= 50)
+    if rsi_blocks_buy:
+        blocked_reasons.append(f"RSI {rsi} ≥ 50 → BUY blockiert")
+    if rsi_blocks_sell:
+        blocked_reasons.append(f"RSI {rsi} ≤ 50 → SELL blockiert")
+
+    buy_ok  = buy_raw  and not rsi_blocks_buy
+    sell_ok = sell_raw and not rsi_blocks_sell
+
+    # Filter 2: ATR-Mindest-Schwelle (Seitwärtsmarkt-Filter)
+    if atr < ATR_MIN_PIPS:
+        if buy_ok or sell_ok:
+            blocked_reasons.append(f"ATR {atr:.2f} < {ATR_MIN_PIPS} → Markt zu ruhig")
+        buy_ok  = False
+        sell_ok = False
+
+    # Filter 3: EMA200 Trendrichtung (beide Seiten erlaubt, kein harter Block)
+    trend_note = ""
+    if ema200_1h and ema200_1h > 0:
+        if buy_ok and current_price < ema200_1h:
+            trend_note = f" ⚠️ Gegen-Trend (EMA200={ema200_1h:.0f})"
+        elif sell_ok and current_price > ema200_1h:
+            trend_note = f" ⚠️ Gegen-Trend (EMA200={ema200_1h:.0f})"
+
+    # Filter 4: Session – kein Filter (immer traden)
+    # → nichts zu tun
+
+    reason = " | ".join(blocked_reasons) + trend_note if blocked_reasons or trend_note else ""
+    return buy_ok, sell_ok, reason
 
 # ==========================================
 # UT BOT – 1:1 PINE SCRIPT ÜBERSETZUNG
@@ -469,22 +554,45 @@ st.session_state.last_atr = atr
 
 current_time = time.time()
 
-# Crossover setzt sofort das Signal (wie Pine: nur bei echtem Cross)
-if buy_crossover:
+# EMA200 (1H) alle 5 Minuten aktualisieren
+if current_time - st.session_state.last_1h_fetch >= 300:
+    closes_1h = get_1h_closes_mt5()
+    if closes_1h:
+        st.session_state.ema200_1h = calculate_ema(closes_1h, 200)
+    st.session_state.last_1h_fetch = current_time
+
+# ── ALLE 4 FILTER ANWENDEN ──────────────────────────────────────────────────
+buy_ok, sell_ok, filter_reason = check_all_filters(
+    rsi, atr, buy_crossover, sell_crossover,
+    st.session_state.ema200_1h, current_price
+)
+st.session_state.filter_reason = filter_reason
+
+# Signal setzen
+if buy_ok:
+    trend_note = " ⚠️ Gegen-Trend" if current_price < st.session_state.ema200_1h and st.session_state.ema200_1h > 0 else ""
     st.session_state.ki_signal = "BUY (LONG)"
-    st.session_state.ki_reason = "[UT Bot Pine]: Crossover – src kreuzt Trail von unten nach oben."
+    st.session_state.ki_reason = f"[UT Bot + Filter]: Crossover ✅ | RSI {rsi} < 50 ✅ | ATR {atr:.2f} ✅{trend_note}"
     st.session_state.signal_strength = signal_strength
     if live_midprice:
         execute_market_order("BUY", st.session_state.broker_buy, st.session_state.broker_sell)
 
-elif sell_crossover:
+elif sell_ok:
+    trend_note = " ⚠️ Gegen-Trend" if current_price > st.session_state.ema200_1h and st.session_state.ema200_1h > 0 else ""
     st.session_state.ki_signal = "SELL (SHORT)"
-    st.session_state.ki_reason = "[UT Bot Pine]: Crossover – src kreuzt Trail von oben nach unten."
+    st.session_state.ki_reason = f"[UT Bot + Filter]: Crossover ✅ | RSI {rsi} > 50 ✅ | ATR {atr:.2f} ✅{trend_note}"
     st.session_state.signal_strength = signal_strength
     if live_midprice:
         execute_market_order("SELL", st.session_state.broker_buy, st.session_state.broker_sell)
 
-# KI-Zusatzanalyse alle 60 Sek (nur Reasoning, kein Signal-Override bei aktivem Crossover)
+elif buy_crossover or sell_crossover:
+    # Crossover da, aber Filter hat blockiert
+    direction = "BUY" if buy_crossover else "SELL"
+    st.session_state.ki_signal = "WAIT (SIDEWAYS)"
+    st.session_state.ki_reason = f"[Filter blockiert {direction}]: {filter_reason}"
+    st.session_state.signal_strength = 1
+
+# KI-Zusatzanalyse alle 60 Sek (nur Reasoning-Update wenn kein aktiver Cross)
 if (current_time - st.session_state.last_signal_eval >= SIGNAL_CYCLE_SEC) or st.session_state.force_ai:
     if not buy_crossover and not sell_crossover:
         _, st.session_state.ki_reason, st.session_state.signal_strength = dual_ai_filter(
@@ -619,9 +727,16 @@ st.html(f"""
         <span class="dot-live"></span> NEXT EVAL IN {seconds_until_next}s
       </div>
 
-      <div style="background:#0a0f1a;border:1px solid #1a2540;border-radius:12px;padding:12px 14px;font-size:11px;color:#4b6080;line-height:1.5;margin-bottom:14px;">
-        <div style="font-size:10px;color:#2a3a50;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700;">🤖 AI-Reasoning</div>
+      <div style="background:#0a0f1a;border:1px solid #1a2540;border-radius:12px;padding:12px 14px;font-size:11px;color:#4b6080;line-height:1.5;margin-bottom:8px;">
+        <div style="font-size:10px;color:#2a3a50;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700;">🤖 Signal-Reasoning</div>
         {st.session_state.ki_reason}
+      </div>
+      <div style="background:#0a0f1a;border:1px solid #1a2540;border-radius:12px;padding:10px 14px;font-size:10px;color:#4b6080;line-height:1.6;margin-bottom:14px;">
+        <div style="font-size:10px;color:#2a3a50;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700;">🔎 Filter-Status</div>
+        <span style="color:#00e676;">RSI:</span> {st.session_state.last_rsi} &nbsp;|&nbsp;
+        <span style="color:#00e676;">ATR:</span> {st.session_state.last_atr:.2f} (Min: {ATR_MIN_PIPS}) &nbsp;|&nbsp;
+        <span style="color:#00e676;">EMA200 (1H):</span> {f"{st.session_state.ema200_1h:.0f}" if st.session_state.ema200_1h > 0 else "lädt…"}
+        {"<br><span style=\"color:#ffc400;\">⚠️ " + st.session_state.filter_reason + "</span>" if st.session_state.filter_reason else "<br><span style=\"color:#00e676;\">✅ Alle Filter OK</span>"}
       </div>
 
       <div style="margin-bottom:6px;">
